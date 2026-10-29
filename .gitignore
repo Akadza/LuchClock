@@ -1,0 +1,49 @@
+
+# LuchClock — ESP8266 / Arduino
+
+# Локальные секреты
+secrets.h
+secrets.local.h
+*.env
+.env
+.env.*
+!.env.example
+
+# Локальные конфигурации
+config.local.h
+credentials.h
+
+# Arduino IDE / VS Code
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# Сборки и прошивки
+build/
+build-*/
+.pio/
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.a
+*.d
+
+# Временные файлы
+*.tmp
+*.temp
+*.bak
+*.log
+*.cache
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
