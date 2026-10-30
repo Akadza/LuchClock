@@ -229,6 +229,13 @@ let lastMotorState = 'stopped';
 let motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
 let statusFailures = 0;
 
+function formatUptime(seconds) {
+  const n = Math.max(0, Number(seconds) || 0);
+  const h = Math.floor(n / 3600);
+  const m = Math.floor((n % 3600) / 60);
+  const sec = Math.floor(n % 60);
+  return (h ? h + ' ч ' : '') + m + ' мин ' + sec + ' с';
+}
 function text(id, value, css) {
   const el = $(id);
   if (!el) return;
