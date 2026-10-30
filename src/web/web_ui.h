@@ -64,6 +64,10 @@ button.active {background:#294966;border-color:#426b91}
 #modeState {display:block;margin-top:6px;color:var(--muted);font-size:12px}
 #autoPanel {text-align:center}
 #controlArea {transition:background-color .2s ease}
+#transitionTrack {height:5px;background:#293545;border-radius:20px;overflow:hidden;margin:10px auto 2px;max-width:440px}
+#transitionBar {height:100%;width:100%;background:var(--blue);transition:width .1s linear}
+#manualProgress {max-width:440px;margin:auto}
+#manualProgress[hidden],#autoProgress[hidden] {display:none!important}
 #autoPanel,#manualPanel {animation:modeFade .2s ease}
 @keyframes modeFade {from {opacity:.3;transform:translateY(4px)} to {opacity:1;transform:translateY(0)}}
 button:disabled {opacity:1;cursor:not-allowed;background:#151b23!important;border-color:#333c48!important;color:#677586!important;box-shadow:inset 0 0 0 1px #202833}
@@ -171,13 +175,15 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
     </div>
   </div>
   <div id="controlArea">
-  <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span></div>
+  <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
+  <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
     <div class="controls">
       <button id="backwardBtn" onclick="command('backward')">← Назад</button>
       <button id="stopBtn" class="stop" onclick="command('stop')">■ Стоп</button>
       <button id="forwardBtn" onclick="command('forward')">Вперёд →</button>
     </div>
+    <div id="manualProgress" hidden><div id="transitionTrack"><div id="manualBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div>
     <div class="info" id="commandInfo">
       Тестовый режим: команды не управляют GPIO.
     </div>
@@ -321,7 +327,10 @@ function renderStatus(s) {
       (pendingAction === 'forward' && s.motor_state === 'forward') ||
       (pendingAction === 'backward' && s.motor_state === 'reverse'))) pendingAction = '';
   updateManualButtons(lastMotorState, lastMotorWait);
+  updateProgress();
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
+  $('autoBtn').disabled = modeRequestPending || (s.mode === 'manual' && !s.can_auto);
+  $('autoBtn').title = (s.mode === 'manual' && !s.can_auto) ? 'Сначала нажмите Стоп и дождитесь остановки' : '';
   if (s.mode === 'auto') {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
       s.auto_ready ? 'Автоматический режим готов' : 'Автоматический режим не готов');
@@ -360,6 +369,21 @@ function showMode(mode) {
   text('modeHint', mode === 'manual' ? 'Ручное управление · симуляция' : 'Автоматический режим');
 }
 
+function updateProgress() {
+  const s = lastStatus;
+  if (!s) return;
+  const active = !!s.mode_transition || s.motor_state === 'waiting';
+  const left = s.mode_transition ? lastModeWait : lastMotorWait;
+  const elapsed = Date.now() - lastStatusAt;
+  const remaining = Math.max(0, left - elapsed);
+  // Максимальная длительность задаётся прошивкой; UI показывает только относительный прогресс.
+  const total = Math.max(1000, left);
+  const pct = Math.max(0, Math.min(100, remaining / total * 100));
+  $('autoProgress').hidden = !(active && s.mode === 'auto');
+  $('manualProgress').hidden = !(active && s.mode === 'manual');
+  $('autoBar').style.width = pct + '%';
+  $('manualBar').style.width = pct + '%';
+}
 function updateManualButtons(state, remaining) {
   const busy = commandPending || modeRequestPending || !!pendingAction || Date.now() < commandLockUntil;
   const s = lastStatus;
@@ -369,6 +393,9 @@ function updateManualButtons(state, remaining) {
   $('forwardBtn').disabled = !allowedForward;
   $('backwardBtn').disabled = !allowedBackward;
   $('stopBtn').disabled = commandPending || !statusKnown || !motorPermissions.can_stop;
+  if (s && s.mode === 'manual') {
+    $('autoBtn').disabled = modeRequestPending || !s.can_auto || state !== 'stopped';
+  }
   $('forwardBtn').classList.toggle('running', state === 'forward');
   $('backwardBtn').classList.toggle('running', state === 'reverse');
   if (state === 'fault') text('commandInfo', 'Авария привода · управление заблокировано');
@@ -410,6 +437,7 @@ async function post(path) {
 
 async function setMode(mode) {
   if (modeRequestPending || commandPending || mode === currentMode) return;
+  if (mode === 'auto' && (!lastStatus || !lastStatus.can_auto || lastMotorState !== 'stopped')) return;
   const previous = currentMode;
   modeRequestPending = true;
   showMode(mode);
@@ -431,6 +459,8 @@ async function setMode(mode) {
 
 async function command(action) {
   if (commandPending || modeRequestPending || pendingAction ||
+      (action === 'forward' && $('forwardBtn').disabled) ||
+      (action === 'backward' && $('backwardBtn').disabled) ||
       (action === 'forward' && !motorPermissions.can_forward) ||
       (action === 'backward' && !motorPermissions.can_reverse)) return;
   commandPending = true;
@@ -494,6 +524,7 @@ setInterval(() => {
     const remaining = Math.max(0, lastMotorWait - elapsed);
     updateManualButtons('waiting', remaining);
   }
+  updateProgress();
   if (lastStatus.mode_transition) {
     const remaining = Math.max(0, lastModeWait - elapsed);
     if (currentMode === 'auto') text('modeState', 'Ожидание ' + (remaining / 1000).toFixed(1) + ' с · запуск запрещён');
