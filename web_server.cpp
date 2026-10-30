@@ -7,6 +7,7 @@
 #include "time_manager.h"
 #include "web_server.h"
 #include "web_ui.h"
+#include "motor_controller.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
@@ -151,12 +152,14 @@ void handleMode() {
 
   if (mode == "manual") {
     if (!manualMode) {
+      motorStop();
       manualMode = true;
       webAddEvent("Переключение в ручной режим");
       Serial.println("[MODE] Manual");
     }
   } else if (mode == "auto") {
     if (manualMode) {
+      motorStop();
       manualMode = false;
       webAddEvent("Переключение в автоматический режим");
       Serial.println("[MODE] Auto");
@@ -206,9 +209,10 @@ void handleCommand() {
     return;
   }
 
-  // Только симуляция, без GPIO.
-  Serial.print("[SIMULATION] Command: ");
-  Serial.println(action);
+  if (!motorCommand(action)) {
+    server.send(409, "text/plain", "Motor command rejected (fault or invalid state)");
+    return;
+  }
 
   server.send(
     200,
