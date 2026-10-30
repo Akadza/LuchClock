@@ -125,7 +125,7 @@ void handleStatus() {
   json += F("\",\"mode\":\"");
   json += manualMode ? "manual" : "auto";
 
-  json += F("\",\"simulation\":true");
+  json += F("\",\"simulation\":false");
 
   json += F(",\"uptime_seconds\":");
   json += String(millis() / 1000UL);
@@ -274,7 +274,7 @@ void handleCommand() {
   server.send(
     200,
     "application/json",
-    "{\"ok\":true,\"simulation\":true}"
+    "{\"ok\":true,\"simulation\":false}"
   );
 }
 
