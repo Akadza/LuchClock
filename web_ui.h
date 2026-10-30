@@ -22,9 +22,9 @@ body {
   margin:0; background:var(--bg); color:var(--text);
   font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
 }
-main {max-width:1000px;margin:auto;padding:24px 18px 42px}
+main {max-width:1000px;margin:auto;padding:18px 18px 22px}
 header,.between {display:flex;justify-content:space-between;align-items:center;gap:12px}
-header {margin-bottom:20px}
+header {margin-bottom:12px}
 h1 {font-size:23px;margin:0 0 4px}
 h2 {font-size:16px;margin:0}
 small,.muted {color:var(--muted)}
@@ -37,9 +37,9 @@ small,.muted {color:var(--muted)}
   color:var(--green);font-size:12px;font-weight:600;
 }
 .time-grid {display:grid;grid-template-columns:1fr 1fr;gap:15px}
-.time {font-size:clamp(24px,5vw,39px);font-weight:700;letter-spacing:1px}
+.time {font-size:clamp(24px,5vw,37px);font-weight:700;letter-spacing:1px}
 .label {color:var(--muted);font-size:12px;margin-bottom:7px}
-.status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
+.status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
 .status {
   background:#252e3b;border-radius:11px;padding:12px;
   min-height:65px;
@@ -70,7 +70,7 @@ button:active:not(:disabled) {transform:scale(.98)}
   background:#222b35;border-radius:9px;padding:11px 13px;
 }
 .diag-item .value {margin-top:6px;font-size:13px}
-.log {max-height:220px;overflow-y:auto}
+.log {max-height:220px;overflow-y:auto;min-height:0}
 .event {display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
 .event:last-child {border:0}
 .event .when {color:var(--muted);font-size:11px;white-space:nowrap;order:-1;min-width:135px}
@@ -80,6 +80,19 @@ button:active:not(:disabled) {transform:scale(.98)}
 #autoInfo {display:none}
 #manualPanel {border-top:1px solid var(--line);padding-top:13px;margin-top:14px}
 #manualPanel .info {background:transparent;padding:4px 0 0}
+@media (min-width:800px) and (min-height:650px) {
+  main {height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  header {flex:none}
+  .card {flex:none;margin-bottom:10px;padding:14px 18px}
+  .card:first-of-type .status {min-height:54px;padding:9px 11px}
+  .card:first-of-type .status .name {margin-bottom:4px}
+  .card:nth-of-type(3) .diag-item {padding:9px 11px}
+  .card:nth-of-type(3) .diag-item .value {margin-top:3px}
+  .card:last-of-type {flex:1;min-height:105px;display:flex;flex-direction:column}
+  .card:last-of-type .log {flex:1;max-height:none}
+  .event {padding:7px 0}
+  footer {flex:none;margin-top:0}
+}
 footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 @media(max-width:600px) {
   .card {padding:15px}
@@ -199,6 +212,9 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 <script>
 const $ = id => document.getElementById(id);
 let currentMode = 'auto';
+let modeRequestPending = false;
+let lastLogSignature = '';
+let refreshPending = false;
 
 function text(id, value, css) {
   const el = $(id);
@@ -209,10 +225,7 @@ function text(id, value, css) {
 function renderStatus(s) {
   currentMode = s.mode;
 
-  $('autoBtn').classList.toggle('active', s.mode === 'auto');
-  $('manualBtn').classList.toggle('active', s.mode === 'manual');
-
-  $('manualPanel').hidden = s.mode !== 'manual';
+  if (!modeRequestPending) showMode(s.mode);
 
   text(
     'wifi',
@@ -277,7 +290,16 @@ function renderStatus(s) {
   );
 }
 
+function showMode(mode) {
+  currentMode = mode;
+  $('autoBtn').classList.toggle('active', mode === 'auto');
+  $('manualBtn').classList.toggle('active', mode === 'manual');
+  $('manualPanel').hidden = mode !== 'manual';
+}
+
 async function refresh() {
+  if (refreshPending) return;
+  refreshPending = true;
   try {
     const response = await fetch('/api/status', {cache:'no-store'});
     if (!response.ok) throw Error('HTTP ' + response.status);
@@ -285,6 +307,8 @@ async function refresh() {
   } catch (e) {
     text('overall', 'Нет связи с ESP');
     text('wifi', 'Нет связи', 'value bad');
+  } finally {
+    refreshPending = false;
   }
 }
 
@@ -294,14 +318,25 @@ async function post(path) {
     const msg = await response.text();
     throw Error(msg || 'Ошибка запроса');
   }
-  await refresh();
 }
 
 async function setMode(mode) {
+  if (modeRequestPending || mode === currentMode) return;
+  const previous = currentMode;
+  modeRequestPending = true;
+  showMode(mode);
+  $('autoBtn').disabled = true;
+  $('manualBtn').disabled = true;
   try {
     await post('/api/mode?value=' + mode);
+    loadLog();
   } catch (e) {
+    showMode(previous);
     alert(e.message);
+  } finally {
+    modeRequestPending = false;
+    $('autoBtn').disabled = false;
+    $('manualBtn').disabled = false;
   }
 }
 
@@ -320,6 +355,9 @@ async function loadLog() {
     const response = await fetch('/api/events', {cache:'no-store'});
     if (!response.ok) throw Error();
     const data = await response.json();
+    const signature = JSON.stringify(data.events);
+    if (signature === lastLogSignature) return;
+    lastLogSignature = signature;
     const container = $('log');
     container.replaceChildren();
     if (!data.events.length) {
@@ -346,7 +384,7 @@ async function loadLog() {
 
 refresh();
 loadLog();
-setInterval(refresh, 2000);
+setInterval(refresh, 3000);
 setInterval(loadLog, 10000);
 </script>
 </body>
