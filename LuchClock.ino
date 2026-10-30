@@ -4,6 +4,7 @@
 #include "wifi_manager.h"
 #include "time_manager.h"
 #include "web_server.h"
+#include "motor_controller.h"
 
 void setup() {
   Serial.begin(115200);
@@ -16,6 +17,7 @@ void setup() {
 
   wifiSetup();
   timeSetup();
+  motorSetup();
   webSetup();
 
   Serial.println("[SYSTEM] Startup complete");
@@ -43,6 +45,7 @@ void loop() {
       break;
   }
 
+  motorLoop();
   webLoop();
 
   yield();
