@@ -8,10 +8,24 @@
 #include "web_server.h"
 #include "web_ui.h"
 #include "../motor/motor_controller.h"
+#include "../motor/motor_settings.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
 static bool manualMode = false;
+static unsigned long modeChangedAt = 0;
+static bool modeTransition = false;
+static bool autoReady = false;
+
+static unsigned long modeWaitRemainingMs() {
+  if (!modeTransition) return 0;
+  unsigned long elapsed = millis() - modeChangedAt;
+  return elapsed >= MOTOR_MODE_CHANGE_DELAY_MS ? 0 : MOTOR_MODE_CHANGE_DELAY_MS - elapsed;
+}
+static bool modeIsReady() {
+  return !modeTransition && motorState() == MOTOR_STOPPED;
+}
+
 
 struct EventEntry {
   unsigned long uptimeSeconds;
@@ -135,10 +149,16 @@ void handleStatus() {
   json += motorStateText();
   json += F("\",\"motor_wait_ms\":");
   json += String(motorWaitRemainingMs());
+  json += F(",\"mode_transition\":");
+  json += modeTransition ? "true" : "false";
+  json += F(",\"mode_wait_ms\":");
+  json += String(modeWaitRemainingMs());
+  json += F(",\"auto_ready\":");
+  json += (!manualMode && autoReady && modeIsReady()) ? "true" : "false";
   json += F(",\"can_forward\":");
-  json += (manualMode && motorCanForward()) ? "true" : "false";
+  json += (manualMode && modeIsReady() && motorCanForward()) ? "true" : "false";
   json += F(",\"can_reverse\":");
-  json += (manualMode && motorCanReverse()) ? "true" : "false";
+  json += (manualMode && modeIsReady() && motorCanReverse()) ? "true" : "false";
   json += F(",\"can_stop\":true");
 
   json += F("}");
@@ -164,6 +184,9 @@ void handleMode() {
     if (!manualMode) {
       motorStop();
       manualMode = true;
+      autoReady = false;
+      modeTransition = true;
+      modeChangedAt = millis();
       webAddEvent("Переключение в ручной режим");
       Serial.println("[MODE] Manual");
     }
@@ -171,6 +194,9 @@ void handleMode() {
     if (manualMode) {
       motorStop();
       manualMode = false;
+      autoReady = false;
+      modeTransition = true;
+      modeChangedAt = millis();
       webAddEvent("Переключение в автоматический режим");
       Serial.println("[MODE] Auto");
     }
@@ -219,6 +245,10 @@ void handleCommand() {
     return;
   }
 
+  if (action != "stop" && !modeIsReady()) {
+    server.send(409, "text/plain", "Mode transition or motor cooldown active");
+    return;
+  }
   if (!motorCommand(action)) {
     server.send(409, "text/plain", "Motor command rejected (fault or invalid state)");
     return;
@@ -272,6 +302,8 @@ void handleEvents() {
 
 void webSetup() {
   manualMode = false;
+  modeTransition = false;
+  autoReady = false;
   eventCount = 0;
 
   webAddEvent("Контроллер запущен");
@@ -296,5 +328,16 @@ void webSetup() {
 }
 
 void webLoop() {
+  if (modeTransition && modeWaitRemainingMs() == 0 && motorState() != MOTOR_WAITING) {
+    modeTransition = false;
+    if (!manualMode) {
+      autoReady = (motorState() == MOTOR_STOPPED);
+      webAddEvent(autoReady
+        ? "Автоматический режим готов (движение пока не реализовано)"
+        : "Автоматический режим: привод не готов");
+    } else {
+      webAddEvent("Ручное управление разблокировано");
+    }
+  }
   server.handleClient();
 }
