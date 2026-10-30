@@ -74,7 +74,7 @@ button:active:not(:disabled) {transform:scale(.98)}
 .log {max-height:220px;overflow-y:auto;min-height:0}
 .event {display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
 .event:last-child {border:0}
-.event .when {color:var(--muted);font-size:11px;white-space:nowrap;order:-1;min-width:135px}
+.event .when {color:var(--muted);font-size:13px;white-space:nowrap;order:-1;min-width:155px}
 [hidden] {display:none !important}
 .mode button {border:0;background:transparent}
 .mode button.active {background:#294966}
@@ -126,8 +126,8 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <div class="time" id="time">--:--:--</div>
     </div>
     <div>
-      <div class="label">Время стрелок</div>
-      <div class="time" id="hands">--:--</div>
+      <div class="label">Положение механизма</div>
+      <div class="time" id="hands">Нет данных</div>
     </div>
   </div>
   <div class="status-grid">
@@ -168,6 +168,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       Тестовый режим: команды не управляют GPIO.
     </div>
   </div>
+  <small>Привод: <span id="motorStatus">Остановлен</span> · симуляция</small>
 </section>
 
 <section class="card">
@@ -225,8 +226,6 @@ function text(id, value, css) {
 }
 
 function renderStatus(s) {
-  currentMode = s.mode;
-
   if (!modeRequestPending) showMode(s.mode);
 
   text(
@@ -266,7 +265,7 @@ function renderStatus(s) {
   }
 
   // Положение механических стрелок пока неизвестно.
-  text('hands', '--:--');
+  text('hands', 'Нет данных');
 
   text('sensor', 'Не подключён', 'value warn');
   text('sensorDetail', 'Проверка пока отключена');
@@ -275,6 +274,8 @@ function renderStatus(s) {
   text('magnetDetail', 'Ожидает подключения AS5600');
 
   text('uptime', formatUptime(s.uptime_seconds));
+  const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Пауза перед реверсом',fault:'Ошибка привода'};
+  text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
   if (s.mode === 'auto') {
     text('modeHint', s.ntp_recent ? 'Автоматический · время получено' : 'Автоматический · ожидание NTP');
   } else {
@@ -314,7 +315,7 @@ async function refresh() {
     renderStatus(await response.json());
   } catch (e) {
     text('overall', 'Нет связи с ESP');
-    text('wifi', 'Нет связи', 'value bad');
+    text('wifiDetail', 'Не удалось обновить данные');
   } finally {
     refreshPending = false;
   }
