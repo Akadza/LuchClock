@@ -151,6 +151,10 @@ void handleStatus() {
   json += String(motorWaitRemainingMs());
   json += F(",\"mode_transition\":");
   json += modeTransition ? "true" : "false";
+  json += F(",\"mode_wait_total_ms\":");
+  json += String(MOTOR_MODE_CHANGE_DELAY_MS);
+  json += F(",\"motor_wait_total_ms\":");
+  json += String(MOTOR_STOP_DELAY_MS);
   json += F(",\"mode_wait_ms\":");
   json += String(modeWaitRemainingMs());
   json += F(",\"auto_ready\":");
@@ -261,6 +265,7 @@ void handleCommand() {
     return;
   }
 
+  webAddEvent(String("Ручная команда: ") + action);
   server.send(
     200,
     "application/json",
