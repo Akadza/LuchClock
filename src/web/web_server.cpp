@@ -135,6 +135,11 @@ void handleStatus() {
   json += motorStateText();
   json += F("\",\"motor_wait_ms\":");
   json += String(motorWaitRemainingMs());
+  json += F(",\"can_forward\":");
+  json += (manualMode && motorCanForward()) ? "true" : "false";
+  json += F(",\"can_reverse\":");
+  json += (manualMode && motorCanReverse()) ? "true" : "false";
+  json += F(",\"can_stop\":true");
 
   json += F("}");
 
