@@ -5,6 +5,7 @@
 #include "src/network/time_manager.h"
 #include "src/web/web_server.h"
 #include "src/motor/motor_controller.h"
+#include "src/encoder/encoder_reader.h"
 
 void setup() {
   Serial.begin(115200);
@@ -16,6 +17,7 @@ void setup() {
   Serial.println("==================");
 
   motorSetup(); // Инициализируем безопасный LOW до Wi-Fi.
+  encoderSetup();
   wifiSetup();
   timeSetup();
   webSetup();
@@ -46,6 +48,7 @@ void loop() {
   }
 
   motorLoop();
+  encoderLoop();
   webLoop();
 
   yield();
