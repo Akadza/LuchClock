@@ -73,7 +73,7 @@ button.active {background:#294966;border-color:#426b91}
 @keyframes modeFade {from {opacity:.3;transform:translateY(4px)} to {opacity:1;transform:translateY(0)}}
 button:disabled {opacity:1;cursor:not-allowed;background:#151b23!important;border-color:#333c48!important;color:#677586!important;box-shadow:inset 0 0 0 1px #202833}
 button:active:not(:disabled) {transform:scale(.98)}
-.controls {display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:9px;margin:15px auto 0;max-width:560px}
+.controls {display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:15px auto 0;max-width:560px}
 .stop {background:#572c35;border-color:#b75a68;color:#fff;font-weight:700}
 .info {
   padding:12px;background:#222b35;border-radius:10px;
@@ -190,13 +190,13 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
     <div class="controls">
-      <button id="backwardBtn" onclick="sendMotorCommand('backward')">← Назад</button>
+      <button id="backwardBtn" hidden disabled>← Назад</button>
       <button id="stopBtn" class="stop" onclick="sendMotorCommand('stop')">■ Стоп</button>
       <button id="forwardBtn" onclick="sendMotorCommand('forward')">Вперёд →</button>
     </div>
     <div id="manualProgress" hidden><div id="transitionTrack"><div id="manualBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div>
     <div class="info" id="commandInfo">
-      Тестовый режим: команды не управляют GPIO.
+      Тестовый выход D5 / GPIO14: вперёд — 3,3 В, стоп — 0 В.
     </div>
   </div>
   </div>
@@ -355,7 +355,7 @@ function renderStatus(s) {
     text('modeHint', s.mode_transition ? 'Переключение · ожидание остановки' :
       s.auto_ready ? 'Автоматический · готов к управлению' : 'Автоматический · не готов');
   } else {
-    text('modeHint', s.mode_transition ? 'Ручной · ожидание остановки' : 'Ручное управление · симуляция');
+    text('modeHint', s.mode_transition ? 'Ручной · ожидание остановки' : 'Ручное управление · тест GPIO14');
   }
 
   if (s.ntp_recent) {
@@ -380,7 +380,7 @@ function showMode(mode) {
   $('manualBtn').classList.toggle('active', mode === 'manual');
   $('manualPanel').hidden = mode !== 'manual';
   $('autoPanel').hidden = mode === 'manual';
-  text('modeHint', mode === 'manual' ? 'Ручное управление · симуляция' : 'Автоматический режим');
+  text('modeHint', mode === 'manual' ? 'Ручное управление · тест GPIO14' : 'Автоматический режим');
 }
 
 function updateProgress() {
