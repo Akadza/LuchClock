@@ -13,9 +13,9 @@ static const char WEB_UI[] PROGMEM = R"LUCHHTML(
 <style>
 :root {
   color-scheme: dark;
-  --bg:#191b1b; --panel:#202322; --line:#3b403b;
-  --text:#e9e5dc; --muted:#a7aba3; --green:#a7b8a0;
-  --yellow:#d3ae79; --red:#d9918d; --blue:#a8b6ac;
+  --bg:#101318; --panel:#191f27; --line:#303843;
+  --text:#f0f3f8; --muted:#aab6c4; --green:#65d6a6;
+  --yellow:#f1c46c; --red:#f27c80; --blue:#91b9ef;
 }
 * {box-sizing:border-box}
 body {
@@ -33,7 +33,7 @@ small,.muted {color:var(--muted)}
   border-radius:11px;padding:18px;margin-bottom:10px;
 }
 .pill {
-  padding:7px 11px;border-radius:25px;background:#30382f;
+  padding:7px 11px;border-radius:25px;background:#28382f;
   color:var(--green);font-size:12px;font-weight:600;
 }
 .time-grid {display:grid;grid-template-columns:1fr 1fr;gap:15px}
@@ -41,7 +41,7 @@ small,.muted {color:var(--muted)}
 .label {color:var(--muted);font-size:12px;margin-bottom:7px}
 .status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
 .status {
-  background:#292d2b;border-radius:11px;padding:12px;
+  background:#222b35;border-radius:11px;padding:12px;
   min-height:65px;
 }
 .status .name {font-size:12px;color:var(--muted);margin-bottom:9px}
@@ -51,24 +51,24 @@ small,.muted {color:var(--muted)}
 .bad {color:var(--red)}
 .section-title {margin-bottom:12px}
 .mode-heading {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.mode {display:flex;gap:4px;padding:4px;background:#252925;border:1px solid var(--line);border-radius:11px}
+.mode {display:flex;gap:4px;padding:4px;background:#111720;border:1px solid var(--line);border-radius:11px}
 button {
-  border:1px solid var(--line);background:#303531;
+  border:1px solid var(--line);background:#2a3443;
   color:var(--text);padding:9px 13px;border-radius:8px;
   font:inherit;font-size:13px;cursor:pointer;
 }
-button.active {background:#556653;border-color:#697b65}
+button.active {background:#294966;border-color:#426b91}
 button:disabled {opacity:.45;cursor:not-allowed}
 button:active:not(:disabled) {transform:scale(.98)}
 .controls {display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:15px}
 .stop {border-color:#95615d;color:#e8b3af}
 .info {
-  padding:12px;background:#292d2b;border-radius:10px;
+  padding:12px;background:#222b35;border-radius:10px;
   font-size:13px;color:var(--muted);margin-top:10px;
 }
 .diag {display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .diag-item {
-  background:#292d2b;border-radius:9px;padding:11px 13px;
+  background:#222b35;border-radius:9px;padding:11px 13px;
 }
 .diag-item .value {margin-top:6px;font-size:13px}
 .log {max-height:220px;overflow-y:auto;min-height:0}
@@ -77,7 +77,7 @@ button:active:not(:disabled) {transform:scale(.98)}
 .event .when {color:var(--muted);font-size:13px;white-space:nowrap;order:-1;min-width:155px}
 [hidden] {display:none !important}
 .mode button {border:0;background:transparent}
-.mode button.active {background:#556653}
+.mode button.active {background:#294966}
 #autoInfo {display:none}
 #controlArea {height:54px;display:flex;align-items:center;border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
 #autoPanel,#manualPanel {width:100%}
@@ -226,6 +226,8 @@ let lastLogSignature = '';
 let refreshPending = false;
 let commandPending = false;
 let lastMotorState = 'stopped';
+let motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
+let statusFailures = 0;
 
 function text(id, value, css) {
   const el = $(id);
@@ -286,6 +288,7 @@ function renderStatus(s) {
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Пауза перед реверсом',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
   lastMotorState = s.motor_state || 'stopped';
+  motorPermissions = {can_forward:!!s.can_forward,can_reverse:!!s.can_reverse,can_stop:!!s.can_stop};
   updateManualButtons(lastMotorState, s.motor_wait_ms || 0);
   if (s.motor_state === 'waiting') text('motorStatus', 'Пауза перед реверсом · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   if (s.mode === 'auto') {
@@ -320,13 +323,12 @@ function showMode(mode) {
 }
 
 function updateManualButtons(state, remaining) {
-  const waiting = state === 'waiting';
-  const fault = state === 'fault';
-  $('forwardBtn').disabled = commandPending || modeRequestPending || waiting || fault;
-  $('backwardBtn').disabled = commandPending || modeRequestPending || waiting || fault;
-  $('stopBtn').disabled = commandPending || state === 'stopped';
-  if (fault) text('commandInfo', 'Ошибка привода · управление заблокировано');
-  else if (waiting) text('commandInfo', 'Пауза перед реверсом · ' + Math.ceil(remaining / 1000) + ' с');
+  const busy = commandPending || modeRequestPending;
+  $('forwardBtn').disabled = busy || !motorPermissions.can_forward;
+  $('backwardBtn').disabled = busy || !motorPermissions.can_reverse;
+  $('stopBtn').disabled = busy || !motorPermissions.can_stop;
+  if (state === 'fault') text('commandInfo', 'Авария · движение заблокировано');
+  else if (state === 'waiting') text('commandInfo', 'Остановка · пауза ' + Math.ceil(remaining / 1000) + ' с');
   else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'вперёд',reverse:'назад'}[state] || 'симуляция'));
 }
 async function refresh() {
@@ -335,10 +337,16 @@ async function refresh() {
   try {
     const response = await fetch('/api/status', {cache:'no-store'});
     if (!response.ok) throw Error('HTTP ' + response.status);
+    statusFailures = 0;
     renderStatus(await response.json());
   } catch (e) {
-    text('overall', 'Нет связи с ESP');
-    text('wifiDetail', 'Не удалось обновить данные');
+    statusFailures++;
+    if (statusFailures >= 3) {
+      text('overall', 'Связь с ESP нестабильна');
+      text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
+      motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
+      updateManualButtons(lastMotorState, 0);
+    }
   } finally {
     refreshPending = false;
   }
@@ -361,6 +369,7 @@ async function setMode(mode) {
   $('manualBtn').disabled = true;
   try {
     await post('/api/mode?value=' + mode);
+    await refresh();
     loadLog();
   } catch (e) {
     showMode(previous);
@@ -378,6 +387,9 @@ async function command(action) {
   updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
+    // До подтверждения статуса не разрешаем новое движение.
+    motorPermissions.can_forward = false;
+    motorPermissions.can_reverse = false;
     await refresh();
   } catch (e) {
     alert(e.message);
