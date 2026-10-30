@@ -15,9 +15,9 @@ void setup() {
   Serial.println("LuchClock v0.3");
   Serial.println("==================");
 
+  motorSetup(); // Инициализируем безопасный LOW до Wi-Fi.
   wifiSetup();
   timeSetup();
-  motorSetup();
   webSetup();
 
   Serial.println("[SYSTEM] Startup complete");
