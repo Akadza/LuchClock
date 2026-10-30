@@ -60,9 +60,8 @@ bool motorCommand(const String& action) {
   else return false;
   if (state == MOTOR_FAULT) return false;
   if (state == MOTOR_WAITING) {
-    // Новая команда во время ожидания не ускоряет реверс.
-    pendingDirection = requested;
-    return true;
+    // Во время выдержки запрещаем смену команды; STOP обработан выше.
+    return false;
   }
   if (state == requested) return true;
   if (state == MOTOR_STOPPED) {
