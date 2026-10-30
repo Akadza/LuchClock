@@ -131,6 +131,11 @@ void handleStatus() {
   json += F("\",\"ntp_age_seconds\":");
   json += String(timeSyncAgeSeconds());
 
+  json += F(",\\\"motor_state\\\":\\\"");
+  json += motorStateText();
+  json += F("\\\",\\\"motor_wait_ms\\\":");
+  json += String(motorWaitRemainingMs());
+
   json += F("}");
 
   server.sendHeader("Cache-Control", "no-store");
