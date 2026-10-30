@@ -1,10 +1,10 @@
 #include <Arduino.h>
 
 #include "config.h"
-#include "wifi_manager.h"
-#include "time_manager.h"
-#include "web_server.h"
-#include "motor_controller.h"
+#include "src/network/wifi_manager.h"
+#include "src/network/time_manager.h"
+#include "src/web/web_server.h"
+#include "src/motor/motor_controller.h"
 
 void setup() {
   Serial.begin(115200);
