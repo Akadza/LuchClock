@@ -361,7 +361,7 @@ async function post(path) {
 }
 
 async function setMode(mode) {
-  if (modeRequestPending || mode === currentMode) return;
+  if (modeRequestPending || commandPending || mode === currentMode) return;
   const previous = currentMode;
   modeRequestPending = true;
   showMode(mode);
@@ -382,7 +382,9 @@ async function setMode(mode) {
 }
 
 async function command(action) {
-  if (commandPending || (lastMotorState === 'waiting' && action !== 'stop')) return;
+  if (commandPending || modeRequestPending ||
+      (action === 'forward' && !motorPermissions.can_forward) ||
+      (action === 'backward' && !motorPermissions.can_reverse)) return;
   commandPending = true;
   updateManualButtons(lastMotorState, 0);
   try {
