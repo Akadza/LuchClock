@@ -8,3 +8,6 @@ bool motorCommand(const String& action);
 MotorState motorState();
 const char* motorStateText();
 unsigned long motorWaitRemainingMs();
+bool motorCanForward();
+bool motorCanReverse();
+bool motorCanStop();
