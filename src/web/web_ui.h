@@ -323,6 +323,7 @@ function renderStatus(s) {
   motorPermissions = {can_forward:!!s.can_forward,can_reverse:!!s.can_reverse,can_stop:!!s.can_stop};
   lastMotorWait = s.motor_wait_ms || 0;
   lastModeWait = s.mode_wait_ms || 0;
+  // Ответ API является единственным источником истины.
   if (pendingAction && ((pendingAction === 'stop' && s.motor_state !== 'forward' && s.motor_state !== 'reverse') ||
       (pendingAction === 'forward' && s.motor_state === 'forward') ||
       (pendingAction === 'backward' && s.motor_state === 'reverse'))) pendingAction = '';
@@ -385,7 +386,7 @@ function updateProgress() {
   $('manualBar').style.width = pct + '%';
 }
 function updateManualButtons(state, remaining) {
-  const busy = commandPending || modeRequestPending || !!pendingAction || Date.now() < commandLockUntil;
+  const busy = commandPending || modeRequestPending || !!pendingAction;
   const s = lastStatus;
   const transition = s && s.mode_transition;
   const allowedForward = statusKnown && !busy && !transition && motorPermissions.can_forward && state !== 'forward';
@@ -465,9 +466,8 @@ async function command(action) {
       (action === 'backward' && !motorPermissions.can_reverse)) return;
   commandPending = true;
   pendingAction = action;
-  // Немедленно блокируем обе команды направления, не ожидая HTTP-ответа.
-  motorPermissions.can_forward = false;
-  motorPermissions.can_reverse = false;
+  // Не затираем разрешения, полученные от ESP: они обновятся при следующем статусе.
+  // Пока запрос выполняется, блокировку обеспечивает commandPending.
   updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
@@ -478,7 +478,11 @@ async function command(action) {
   } finally {
     commandPending = false;
     await refresh();
-    updateManualButtons(lastMotorState, lastMotorWait);
+    // При сбое подтверждения не оставляем кнопки навсегда заблокированными.
+    if (pendingAction) {
+      pendingAction = '';
+      updateManualButtons(lastMotorState, lastMotorWait);
+    }
   }
 }
 
