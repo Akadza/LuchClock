@@ -153,7 +153,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <div class="time" id="time">--:--:--</div>
     </div>
     <div>
-      <div class="label">Положение механизма</div>
+      <div class="label">Положение энкодера (минуты)</div>
       <div class="time" id="hands">Нет данных</div>
     </div>
   </div>
@@ -167,11 +167,11 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <div class="value" id="ntp">Не настроен</div>
     </div>
     <div class="status">
-      <div class="name">AS5600</div>
+      <div class="name">PCF8574</div>
       <div class="value" id="sensor">Не подключён</div>
     </div>
     <div class="status">
-      <div class="name">Магнит</div>
+      <div class="name">Код энкодера</div>
       <div class="value" id="magnet">Нет данных</div>
     </div>
   </div>
@@ -217,11 +217,11 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <div class="value" id="ntpDetail">—</div>
     </div>
     <div class="diag-item">
-      <div class="label">Связь с AS5600</div>
+      <div class="label">Связь с PCF8574</div>
       <div class="value" id="sensorDetail">—</div>
     </div>
     <div class="diag-item">
-      <div class="label">Магнитное поле</div>
+      <div class="label">Сырой код / позиция</div>
       <div class="value" id="magnetDetail">—</div>
     </div>
   </div>
@@ -315,14 +315,13 @@ function renderStatus(s) {
     }
   }
 
-  // Положение механических стрелок пока неизвестно.
-  text('hands', 'Нет данных');
+  // Абсолютный ACE-128: 128 позиций отображаются в 0..59 минут.
+  text('hands', s.encoder_valid ? String(s.encoder_minutes).padStart(2,'0') + ' мин' : 'Нет данных');
 
-  text('sensor', 'Не подключён', 'value warn');
-  text('sensorDetail', 'Проверка пока отключена');
-
-  text('magnet', 'Нет данных', 'value warn');
-  text('magnetDetail', 'Ожидает подключения AS5600');
+  text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
+  text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
+  text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position : 'Нет данных', 'value ' + (s.encoder_valid ? 'ok' : 'warn'));
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · позиция: ' + s.encoder_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
   lastStatus = s;
@@ -369,7 +368,7 @@ function renderStatus(s) {
   text(
     'diagSummary',
     s.ntp_recent
-      ? 'Время синхронизировано · датчики не подключены'
+      ? 'Время синхронизировано · энкодер: ' + (s.encoder_valid ? s.encoder_minutes + ' мин' : 'нет данных')
       : 'Проверка синхронизации времени'
   );
 }
