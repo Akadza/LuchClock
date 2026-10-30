@@ -376,9 +376,9 @@ function updateProgress() {
   const left = s.mode_transition ? lastModeWait : lastMotorWait;
   const elapsed = Date.now() - lastStatusAt;
   const remaining = Math.max(0, left - elapsed);
-  // Максимальная длительность задаётся прошивкой; UI показывает только относительный прогресс.
-  const total = Math.max(1000, left);
-  const pct = Math.max(0, Math.min(100, remaining / total * 100));
+  // Длительность и оставшееся время приходят от ESP; браузер только анимирует шкалу.
+  const total = s.mode_transition ? (s.mode_wait_total_ms || 1000) : (s.motor_wait_total_ms || 1000);
+  const pct = Math.max(0, Math.min(100, (total - remaining) / total * 100));
   $('autoProgress').hidden = !(active && s.mode === 'auto');
   $('manualProgress').hidden = !(active && s.mode === 'manual');
   $('autoBar').style.width = pct + '%';
