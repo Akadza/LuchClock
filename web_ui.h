@@ -50,6 +50,7 @@ small,.muted {color:var(--muted)}
 .warn {color:var(--yellow)}
 .bad {color:var(--red)}
 .section-title {margin-bottom:12px}
+.mode-heading {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .mode {display:flex;gap:4px;padding:4px;background:#111720;border:1px solid var(--line);border-radius:11px}
 button {
   border:1px solid var(--line);background:#2a3443;
@@ -100,6 +101,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
   .diag {grid-template-columns:1fr}
   .between {align-items:flex-start;flex-direction:column}
   .mode {width:100%}
+  .mode-heading {gap:5px}
   .mode button {flex:1}
   .controls button {padding:11px 5px}
   .event {display:block}
@@ -150,7 +152,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 
 <section class="card">
   <div class="between section-title">
-    <h2>Режим работы</h2>
+    <div class="mode-heading"><h2>Режим работы</h2><small id="modeHint">Автоматический · ожидание времени</small></div>
     <div class="mode">
       <button id="autoBtn" onclick="setMode('auto')">Автоматический</button>
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
@@ -273,6 +275,11 @@ function renderStatus(s) {
   text('magnetDetail', 'Ожидает подключения AS5600');
 
   text('uptime', formatUptime(s.uptime_seconds));
+  if (s.mode === 'auto') {
+    text('modeHint', s.ntp_recent ? 'Автоматический · время получено' : 'Автоматический · ожидание NTP');
+  } else {
+    text('modeHint', 'Ручное управление · симуляция');
+  }
 
   if (s.ntp_recent) {
     text('overall', 'NTP работает');
@@ -295,6 +302,7 @@ function showMode(mode) {
   $('autoBtn').classList.toggle('active', mode === 'auto');
   $('manualBtn').classList.toggle('active', mode === 'manual');
   $('manualPanel').hidden = mode !== 'manual';
+  text('modeHint', mode === 'manual' ? 'Ручное управление · симуляция' : 'Автоматический режим');
 }
 
 async function refresh() {
