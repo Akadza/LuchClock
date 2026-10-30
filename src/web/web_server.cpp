@@ -9,6 +9,7 @@
 #include "web_ui.h"
 #include "../motor/motor_controller.h"
 #include "../motor/motor_settings.h"
+#include "../encoder/encoder_reader.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
@@ -111,7 +112,7 @@ void handleRoot() {
 
 void handleStatus() {
   String json;
-  json.reserve(420);
+  json.reserve(560);
 
   json += F("{\"device\":\"LuchClock\",");
   json += F("\"version\":\"0.3\",");
@@ -126,6 +127,19 @@ void handleStatus() {
   json += manualMode ? "manual" : "auto";
 
   json += F("\",\"simulation\":false");
+
+  json += F(",\"encoder_connected\":");
+  json += encoderConnected() ? "true" : "false";
+  json += F(",\"encoder_valid\":");
+  json += encoderValid() ? "true" : "false";
+  json += F(",\"encoder_address\":");
+  json += String(encoderAddress);
+  json += F(",\"encoder_raw\":");
+  json += String(encoderRaw);
+  json += F(",\"encoder_position\":");
+  json += String(encoderValid() ? encoderPosition : -1);
+  json += F(",\"encoder_minutes\":");
+  json += String(encoderMinutes());
 
   json += F(",\"uptime_seconds\":");
   json += String(millis() / 1000UL);
