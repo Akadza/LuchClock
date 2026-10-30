@@ -332,6 +332,8 @@ function renderStatus(s) {
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   $('autoBtn').disabled = modeRequestPending || (s.mode === 'manual' && !s.can_auto);
   $('autoBtn').title = (s.mode === 'manual' && !s.can_auto) ? 'Сначала нажмите Стоп и дождитесь остановки' : '';
+  $('manualBtn').disabled = modeRequestPending || (s.mode === 'auto' && (s.mode_transition || s.motor_state !== 'stopped'));
+  $('manualBtn').title = (s.mode === 'auto' && s.mode_transition) ? 'Дождитесь завершения защитной паузы' : '';
   if (s.mode === 'auto') {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
       s.auto_ready ? 'Автоматический режим готов' : 'Автоматический режим не готов');
@@ -439,6 +441,7 @@ async function post(path) {
 async function setMode(mode) {
   if (modeRequestPending || commandPending || mode === currentMode) return;
   if (mode === 'auto' && (!lastStatus || !lastStatus.can_auto || lastMotorState !== 'stopped')) return;
+  if (mode === 'manual' && (!lastStatus || lastStatus.mode_transition || lastMotorState !== 'stopped')) return;
   const previous = currentMode;
   modeRequestPending = true;
   showMode(mode);
@@ -453,8 +456,13 @@ async function setMode(mode) {
     alert(e.message);
   } finally {
     modeRequestPending = false;
-    $('autoBtn').disabled = false;
-    $('manualBtn').disabled = false;
+    // Не снимаем защитную блокировку до получения актуального статуса ESP.
+    await refresh();
+    if (lastStatus) {
+      $('autoBtn').disabled = lastStatus.mode === 'manual' && !lastStatus.can_auto;
+      $('manualBtn').disabled = lastStatus.mode === 'auto' &&
+        (lastStatus.mode_transition || lastStatus.motor_state !== 'stopped');
+    }
   }
 }
 
