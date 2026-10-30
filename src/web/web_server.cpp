@@ -188,6 +188,11 @@ void handleMode() {
   String mode = server.arg("value");
 
   if (mode == "manual") {
+    // Запрет переключения во время защитной паузы действует и на API.
+    if (!manualMode && (modeTransition || motorState() != MOTOR_STOPPED)) {
+      server.send(409, "text/plain; charset=utf-8", "Дождитесь завершения защитной паузы и остановки привода");
+      return;
+    }
     if (!manualMode) {
       motorStop();
       manualMode = true;
