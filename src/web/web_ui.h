@@ -58,10 +58,10 @@ button {
   font:inherit;font-size:13px;cursor:pointer;
 }
 button.active {background:#294966;border-color:#426b91}
-button:disabled {opacity:.45;cursor:not-allowed}
+button:disabled {opacity:1;cursor:not-allowed;background:#151b23!important;border-color:#333c48!important;color:#677586!important;box-shadow:inset 0 0 0 1px #202833}
 button:active:not(:disabled) {transform:scale(.98)}
-.controls {display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:15px}
-.stop {border-color:#95615d;color:#e8b3af}
+.controls {display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:9px;margin:15px auto 0;max-width:560px}
+.stop {background:#572c35;border-color:#b75a68;color:#fff;font-weight:700}
 .info {
   padding:12px;background:#222b35;border-radius:10px;
   font-size:13px;color:var(--muted);margin-top:10px;
@@ -79,12 +79,12 @@ button:active:not(:disabled) {transform:scale(.98)}
 .mode button {border:0;background:transparent}
 .mode button.active {background:#294966}
 #autoInfo {display:none}
-#controlArea {height:54px;display:flex;align-items:center;border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+#controlArea {min-height:112px;display:flex;align-items:center;border-top:1px solid var(--line);margin-top:8px;padding-top:12px}
 #autoPanel,#manualPanel {width:100%}
 #manualPanel .controls {margin-top:0}
-#manualPanel .info {display:none}
+#manualPanel .info {display:block}
 #autoPanel {font-size:12px;color:var(--muted)}
-#manualPanel .info {background:transparent;padding:4px 0 0}
+#manualPanel .info {background:transparent;padding:8px 0 0;color:var(--text);text-align:center}
 @media (min-width:800px) and (min-height:650px) {
   main {height:100dvh;display:flex;flex-direction:column;overflow:hidden}
   header {flex:none}
@@ -134,7 +134,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <div class="time" id="hands">Нет данных</div>
     </div>
   </div>
-  <div class="status-grid">
+  <div class="status-grid" hidden>
     <div class="status">
       <div class="name">Wi-Fi</div>
       <div class="value" id="wifi">Проверка</div>
