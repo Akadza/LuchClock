@@ -160,6 +160,9 @@ void handleStatus() {
   json += F(",\"can_reverse\":");
   json += (manualMode && modeIsReady() && motorCanReverse()) ? "true" : "false";
   json += F(",\"can_stop\":true");
+  json += F(",\"can_auto\":");
+  json += (motorState() == MOTOR_STOPPED && !modeTransition && !manualMode) ||
+          (manualMode && motorState() == MOTOR_STOPPED && !modeTransition) ? "true" : "false";
 
   json += F("}");
 
@@ -191,6 +194,10 @@ void handleMode() {
       Serial.println("[MODE] Manual");
     }
   } else if (mode == "auto") {
+    if (manualMode && (motorState() != MOTOR_STOPPED || modeTransition)) {
+      server.send(409, "text/plain; charset=utf-8", "Сначала остановите привод и дождитесь завершения паузы");
+      return;
+    }
     if (manualMode) {
       motorStop();
       manualMode = false;
