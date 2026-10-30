@@ -58,6 +58,14 @@ button {
   font:inherit;font-size:13px;cursor:pointer;
 }
 button.active {background:#294966;border-color:#426b91}
+.controls button.running {background:#1b5145;border-color:#65d6a6;color:#fff;box-shadow:0 0 0 1px #65d6a6}
+.controls button.running:disabled {background:#1b5145!important;border-color:#65d6a6!important;color:#fff!important;box-shadow:0 0 0 1px #65d6a6}
+#commandInfo {min-height:26px}
+#modeState {display:block;margin-top:6px;color:var(--muted);font-size:12px}
+#autoPanel {text-align:center}
+#controlArea {transition:background-color .2s ease}
+#autoPanel,#manualPanel {animation:modeFade .2s ease}
+@keyframes modeFade {from {opacity:.3;transform:translateY(4px)} to {opacity:1;transform:translateY(0)}}
 button:disabled {opacity:1;cursor:not-allowed;background:#151b23!important;border-color:#333c48!important;color:#677586!important;box-shadow:inset 0 0 0 1px #202833}
 button:active:not(:disabled) {transform:scale(.98)}
 .controls {display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:9px;margin:15px auto 0;max-width:560px}
@@ -163,7 +171,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
     </div>
   </div>
   <div id="controlArea">
-  <div id="autoPanel">Привод: <span id="motorStatus">Остановлен</span> · автоматическое движение не реализовано</div>
+  <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span></div>
   <div id="manualPanel" hidden>
     <div class="controls">
       <button id="backwardBtn" onclick="command('backward')">← Назад</button>
@@ -228,6 +236,14 @@ let commandPending = false;
 let lastMotorState = 'stopped';
 let motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
 let statusFailures = 0;
+let statusKnown = false;
+let modeSwitchUntil = 0;
+let lastStatusAt = 0;
+let lastMotorWait = 0;
+let lastModeWait = 0;
+let lastStatus = null;
+let pendingAction = '';
+let commandLockUntil = 0;
 
 function formatUptime(seconds) {
   const n = Math.max(0, Number(seconds) || 0);
@@ -292,16 +308,31 @@ function renderStatus(s) {
   text('magnetDetail', 'Ожидает подключения AS5600');
 
   text('uptime', formatUptime(s.uptime_seconds));
-  const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Пауза перед реверсом',fault:'Ошибка привода'};
+  lastStatus = s;
+  lastStatusAt = Date.now();
+  statusKnown = true;
+  const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Остановка · защитная пауза',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
   lastMotorState = s.motor_state || 'stopped';
   motorPermissions = {can_forward:!!s.can_forward,can_reverse:!!s.can_reverse,can_stop:!!s.can_stop};
-  updateManualButtons(lastMotorState, s.motor_wait_ms || 0);
-  if (s.motor_state === 'waiting') text('motorStatus', 'Пауза перед реверсом · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
+  lastMotorWait = s.motor_wait_ms || 0;
+  lastModeWait = s.mode_wait_ms || 0;
+  if (pendingAction && ((pendingAction === 'stop' && s.motor_state !== 'forward' && s.motor_state !== 'reverse') ||
+      (pendingAction === 'forward' && s.motor_state === 'forward') ||
+      (pendingAction === 'backward' && s.motor_state === 'reverse'))) pendingAction = '';
+  updateManualButtons(lastMotorState, lastMotorWait);
+  if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   if (s.mode === 'auto') {
-    text('modeHint', s.ntp_recent ? 'Автоматический · время получено' : 'Автоматический · ожидание NTP');
+    text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
+      s.auto_ready ? 'Автоматический режим готов' : 'Автоматический режим не готов');
+    text('modeState', s.mode_transition ? 'Ожидание ' + Math.ceil(s.mode_wait_ms / 1000) + ' с · запуск запрещён' :
+      s.auto_ready ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода');
+  }
+  if (s.mode === 'auto') {
+    text('modeHint', s.mode_transition ? 'Переключение · ожидание остановки' :
+      s.auto_ready ? 'Автоматический · готов к управлению' : 'Автоматический · не готов');
   } else {
-    text('modeHint', 'Ручное управление · симуляция');
+    text('modeHint', s.mode_transition ? 'Ручной · ожидание остановки' : 'Ручное управление · симуляция');
   }
 
   if (s.ntp_recent) {
@@ -330,13 +361,21 @@ function showMode(mode) {
 }
 
 function updateManualButtons(state, remaining) {
-  const busy = commandPending || modeRequestPending;
-  $('forwardBtn').disabled = busy || !motorPermissions.can_forward;
-  $('backwardBtn').disabled = busy || !motorPermissions.can_reverse;
-  $('stopBtn').disabled = busy || !motorPermissions.can_stop;
-  if (state === 'fault') text('commandInfo', 'Авария · движение заблокировано');
-  else if (state === 'waiting') text('commandInfo', 'Остановка · пауза ' + Math.ceil(remaining / 1000) + ' с');
-  else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'вперёд',reverse:'назад'}[state] || 'симуляция'));
+  const busy = commandPending || modeRequestPending || !!pendingAction || Date.now() < commandLockUntil;
+  const s = lastStatus;
+  const transition = s && s.mode_transition;
+  const allowedForward = statusKnown && !busy && !transition && motorPermissions.can_forward && state !== 'forward';
+  const allowedBackward = statusKnown && !busy && !transition && motorPermissions.can_reverse && state !== 'reverse';
+  $('forwardBtn').disabled = !allowedForward;
+  $('backwardBtn').disabled = !allowedBackward;
+  $('stopBtn').disabled = commandPending || !statusKnown || !motorPermissions.can_stop;
+  $('forwardBtn').classList.toggle('running', state === 'forward');
+  $('backwardBtn').classList.toggle('running', state === 'reverse');
+  if (state === 'fault') text('commandInfo', 'Авария привода · управление заблокировано');
+  else if (transition) text('commandInfo', 'Переключение режима · пауза ' + Math.ceil((s.mode_wait_ms || 0) / 1000) + ' с');
+  else if (state === 'waiting') text('commandInfo', 'Остановка · защитная пауза ' + Math.ceil(remaining / 1000) + ' с');
+  else if (pendingAction) text('commandInfo', 'Ожидание подтверждения команды от ESP');
+  else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'движется вперёд',reverse:'движется назад'}[state] || 'состояние неизвестно'));
 }
 async function refresh() {
   if (refreshPending) return;
@@ -344,14 +383,16 @@ async function refresh() {
   try {
     const response = await fetch('/api/status', {cache:'no-store'});
     if (!response.ok) throw Error('HTTP ' + response.status);
+    const data = await response.json();
     statusFailures = 0;
-    renderStatus(await response.json());
+    renderStatus(data);
   } catch (e) {
     statusFailures++;
     if (statusFailures >= 3) {
       text('overall', 'Связь с ESP нестабильна');
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
+      statusKnown = false;
       updateManualButtons(lastMotorState, 0);
     }
   } finally {
@@ -389,23 +430,25 @@ async function setMode(mode) {
 }
 
 async function command(action) {
-  if (commandPending || modeRequestPending ||
+  if (commandPending || modeRequestPending || pendingAction ||
       (action === 'forward' && !motorPermissions.can_forward) ||
       (action === 'backward' && !motorPermissions.can_reverse)) return;
   commandPending = true;
+  pendingAction = action;
+  // Немедленно блокируем обе команды направления, не ожидая HTTP-ответа.
+  motorPermissions.can_forward = false;
+  motorPermissions.can_reverse = false;
   updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
-    // До подтверждения статуса не разрешаем новое движение.
-    motorPermissions.can_forward = false;
-    motorPermissions.can_reverse = false;
     await refresh();
   } catch (e) {
+    pendingAction = '';
     alert(e.message);
   } finally {
     commandPending = false;
     await refresh();
-    updateManualButtons(lastMotorState, 0);
+    updateManualButtons(lastMotorState, lastMotorWait);
   }
 }
 
@@ -443,7 +486,20 @@ async function loadLog() {
 
 refresh();
 loadLog();
-setInterval(refresh, 3000);
+setInterval(refresh, 250);
+setInterval(() => {
+  if (!lastStatus) return;
+  const elapsed = Date.now() - lastStatusAt;
+  if (lastStatus.motor_state === 'waiting') {
+    const remaining = Math.max(0, lastMotorWait - elapsed);
+    updateManualButtons('waiting', remaining);
+  }
+  if (lastStatus.mode_transition) {
+    const remaining = Math.max(0, lastModeWait - elapsed);
+    if (currentMode === 'auto') text('modeState', 'Ожидание ' + (remaining / 1000).toFixed(1) + ' с · запуск запрещён');
+    else text('commandInfo', 'Переключение режима · пауза ' + (remaining / 1000).toFixed(1) + ' с');
+  }
+}, 100);
 setInterval(loadLog, 10000);
 </script>
 </body>
