@@ -34,7 +34,8 @@ small,.muted {color:var(--muted)}
 }
 .pill {
   padding:7px 11px;border-radius:25px;background:#28382f;
-  color:var(--green);font-size:12px;font-weight:600;
+  color:#a6f0d0;font-size:12px;font-weight:600;
+  border:1px solid #39775c;
 }
 .time-grid {display:grid;grid-template-columns:1fr 1fr;gap:15px}
 .time {font-size:clamp(24px,5vw,37px);font-weight:700;letter-spacing:1px}
@@ -82,8 +83,18 @@ button:active:not(:disabled) {transform:scale(.98)}
 .diag-item {
   background:#222b35;border-radius:9px;padding:11px 13px;
 }
-.diag-item .value {margin-top:6px;font-size:13px}
-.log {max-height:220px;overflow-y:auto;min-height:0}
+.diag-item .label {color:#d3dce7;font-weight:500}
+.diag-item .value {margin-top:6px;font-size:13px;color:var(--text)}
+.log {
+  max-height:220px;overflow-y:auto;min-height:0;
+  padding-right:14px;
+  scrollbar-width:thin;
+  scrollbar-color:#64758a #222b35;
+}
+.log::-webkit-scrollbar {width:8px}
+.log::-webkit-scrollbar-track {background:#222b35;border-radius:8px}
+.log::-webkit-scrollbar-thumb {background:#64758a;border-radius:8px;border:2px solid #222b35}
+.log::-webkit-scrollbar-thumb:hover {background:#8495aa}
 .event {display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
 .event:last-child {border:0}
 .event .when {color:var(--muted);font-size:13px;white-space:nowrap;order:-1;min-width:155px}
