@@ -221,12 +221,13 @@ let refreshPending = false;
 
 function text(id, value, css) {
   const el = $(id);
-  el.textContent = value;
-  if (css) el.className = css;
+  if (!el) return;
+  if (el.textContent !== String(value)) el.textContent = value;
+  if (css && el.className !== css) el.className = css;
 }
 
 function renderStatus(s) {
-  if (!modeRequestPending) showMode(s.mode);
+  if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
   text(
     'wifi',
@@ -276,6 +277,7 @@ function renderStatus(s) {
   text('uptime', formatUptime(s.uptime_seconds));
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Пауза перед реверсом',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
+  if (s.motor_state === 'waiting') text('motorStatus', 'Пауза перед реверсом · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   if (s.mode === 'auto') {
     text('modeHint', s.ntp_recent ? 'Автоматический · время получено' : 'Автоматический · ожидание NTP');
   } else {
