@@ -179,9 +179,9 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
     <div class="controls">
-      <button id="backwardBtn" onclick="command('backward')">← Назад</button>
-      <button id="stopBtn" class="stop" onclick="command('stop')">■ Стоп</button>
-      <button id="forwardBtn" onclick="command('forward')">Вперёд →</button>
+      <button id="backwardBtn" onclick="sendMotorCommand('backward')">← Назад</button>
+      <button id="stopBtn" class="stop" onclick="sendMotorCommand('stop')">■ Стоп</button>
+      <button id="forwardBtn" onclick="sendMotorCommand('forward')">Вперёд →</button>
     </div>
     <div id="manualProgress" hidden><div id="transitionTrack"><div id="manualBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div>
     <div class="info" id="commandInfo">
@@ -458,7 +458,7 @@ async function setMode(mode) {
   }
 }
 
-async function command(action) {
+async function sendMotorCommand(action) {
   if (commandPending || modeRequestPending || pendingAction ||
       (action === 'forward' && $('forwardBtn').disabled) ||
       (action === 'backward' && $('backwardBtn').disabled) ||
