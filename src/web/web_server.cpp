@@ -328,7 +328,8 @@ void webSetup() {
 }
 
 void webLoop() {
-  if (modeTransition && modeWaitRemainingMs() == 0 && motorState() != MOTOR_WAITING) {
+  if (modeTransition && motorState() != MOTOR_WAITING &&
+      (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
     modeTransition = false;
     if (!manualMode) {
       autoReady = (motorState() == MOTOR_STOPPED);
