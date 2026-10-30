@@ -13,9 +13,9 @@ static const char WEB_UI[] PROGMEM = R"LUCHHTML(
 <style>
 :root {
   color-scheme: dark;
-  --bg:#101318; --panel:#191f27; --line:#303843;
-  --text:#f0f3f8; --muted:#98a5b6; --green:#58d6a0;
-  --yellow:#f1c46c; --red:#f27c80; --blue:#79aefa;
+  --bg:#191b1b; --panel:#202322; --line:#3b403b;
+  --text:#e9e5dc; --muted:#a7aba3; --green:#a7b8a0;
+  --yellow:#d3ae79; --red:#d9918d; --blue:#a8b6ac;
 }
 * {box-sizing:border-box}
 body {
@@ -25,15 +25,15 @@ body {
 main {max-width:1000px;margin:auto;padding:18px 18px 22px}
 header,.between {display:flex;justify-content:space-between;align-items:center;gap:12px}
 header {margin-bottom:12px}
-h1 {font-size:23px;margin:0 0 4px}
-h2 {font-size:16px;margin:0}
+h1 {font-size:22px;font-weight:600;letter-spacing:.04em;margin:0 0 4px}
+h2 {font-size:14px;font-weight:600;margin:0}
 small,.muted {color:var(--muted)}
 .card {
   background:var(--panel);border:1px solid var(--line);
-  border-radius:14px;padding:20px;margin-bottom:12px;
+  border-radius:11px;padding:18px;margin-bottom:10px;
 }
 .pill {
-  padding:7px 11px;border-radius:25px;background:#28382f;
+  padding:7px 11px;border-radius:25px;background:#30382f;
   color:var(--green);font-size:12px;font-weight:600;
 }
 .time-grid {display:grid;grid-template-columns:1fr 1fr;gap:15px}
@@ -41,7 +41,7 @@ small,.muted {color:var(--muted)}
 .label {color:var(--muted);font-size:12px;margin-bottom:7px}
 .status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
 .status {
-  background:#252e3b;border-radius:11px;padding:12px;
+  background:#292d2b;border-radius:11px;padding:12px;
   min-height:65px;
 }
 .status .name {font-size:12px;color:var(--muted);margin-bottom:9px}
@@ -51,24 +51,24 @@ small,.muted {color:var(--muted)}
 .bad {color:var(--red)}
 .section-title {margin-bottom:12px}
 .mode-heading {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.mode {display:flex;gap:4px;padding:4px;background:#111720;border:1px solid var(--line);border-radius:11px}
+.mode {display:flex;gap:4px;padding:4px;background:#252925;border:1px solid var(--line);border-radius:11px}
 button {
-  border:1px solid var(--line);background:#2a3443;
+  border:1px solid var(--line);background:#303531;
   color:var(--text);padding:9px 13px;border-radius:8px;
   font:inherit;font-size:13px;cursor:pointer;
 }
-button.active {background:#294966;border-color:#426b91}
+button.active {background:#556653;border-color:#697b65}
 button:disabled {opacity:.45;cursor:not-allowed}
 button:active:not(:disabled) {transform:scale(.98)}
 .controls {display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:15px}
-.stop {border-color:#86525b;color:#ffb6ba}
+.stop {border-color:#95615d;color:#e8b3af}
 .info {
-  padding:12px;background:#252e3b;border-radius:10px;
+  padding:12px;background:#292d2b;border-radius:10px;
   font-size:13px;color:var(--muted);margin-top:10px;
 }
 .diag {display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .diag-item {
-  background:#222b35;border-radius:9px;padding:11px 13px;
+  background:#292d2b;border-radius:9px;padding:11px 13px;
 }
 .diag-item .value {margin-top:6px;font-size:13px}
 .log {max-height:220px;overflow-y:auto;min-height:0}
@@ -77,9 +77,13 @@ button:active:not(:disabled) {transform:scale(.98)}
 .event .when {color:var(--muted);font-size:13px;white-space:nowrap;order:-1;min-width:155px}
 [hidden] {display:none !important}
 .mode button {border:0;background:transparent}
-.mode button.active {background:#294966}
+.mode button.active {background:#556653}
 #autoInfo {display:none}
-#manualPanel {border-top:1px solid var(--line);padding-top:13px;margin-top:14px}
+#controlArea {height:54px;display:flex;align-items:center;border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+#autoPanel,#manualPanel {width:100%}
+#manualPanel .controls {margin-top:0}
+#manualPanel .info {display:none}
+#autoPanel {font-size:12px;color:var(--muted)}
 #manualPanel .info {background:transparent;padding:4px 0 0}
 @media (min-width:800px) and (min-height:650px) {
   main {height:100dvh;display:flex;flex-direction:column;overflow:hidden}
@@ -158,17 +162,19 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
+  <div id="controlArea">
+  <div id="autoPanel">Привод: <span id="motorStatus">Остановлен</span> · автоматическое движение не реализовано</div>
   <div id="manualPanel" hidden>
     <div class="controls">
-      <button onclick="command('backward')">← Назад</button>
-      <button class="stop" onclick="command('stop')">■ Стоп</button>
-      <button onclick="command('forward')">Вперёд →</button>
+      <button id="backwardBtn" onclick="command('backward')">← Назад</button>
+      <button id="stopBtn" class="stop" onclick="command('stop')">■ Стоп</button>
+      <button id="forwardBtn" onclick="command('forward')">Вперёд →</button>
     </div>
     <div class="info" id="commandInfo">
       Тестовый режим: команды не управляют GPIO.
     </div>
   </div>
-  <small>Привод: <span id="motorStatus">Остановлен</span> · симуляция</small>
+  </div>
 </section>
 
 <section class="card">
@@ -218,6 +224,8 @@ let currentMode = 'auto';
 let modeRequestPending = false;
 let lastLogSignature = '';
 let refreshPending = false;
+let commandPending = false;
+let lastMotorState = 'stopped';
 
 function text(id, value, css) {
   const el = $(id);
@@ -277,6 +285,8 @@ function renderStatus(s) {
   text('uptime', formatUptime(s.uptime_seconds));
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Пауза перед реверсом',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
+  lastMotorState = s.motor_state || 'stopped';
+  updateManualButtons(lastMotorState, s.motor_wait_ms || 0);
   if (s.motor_state === 'waiting') text('motorStatus', 'Пауза перед реверсом · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   if (s.mode === 'auto') {
     text('modeHint', s.ntp_recent ? 'Автоматический · время получено' : 'Автоматический · ожидание NTP');
@@ -305,9 +315,20 @@ function showMode(mode) {
   $('autoBtn').classList.toggle('active', mode === 'auto');
   $('manualBtn').classList.toggle('active', mode === 'manual');
   $('manualPanel').hidden = mode !== 'manual';
+  $('autoPanel').hidden = mode === 'manual';
   text('modeHint', mode === 'manual' ? 'Ручное управление · симуляция' : 'Автоматический режим');
 }
 
+function updateManualButtons(state, remaining) {
+  const waiting = state === 'waiting';
+  const fault = state === 'fault';
+  $('forwardBtn').disabled = commandPending || modeRequestPending || waiting || fault;
+  $('backwardBtn').disabled = commandPending || modeRequestPending || waiting || fault;
+  $('stopBtn').disabled = commandPending || state === 'stopped';
+  if (fault) text('commandInfo', 'Ошибка привода · управление заблокировано');
+  else if (waiting) text('commandInfo', 'Пауза перед реверсом · ' + Math.ceil(remaining / 1000) + ' с');
+  else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'вперёд',reverse:'назад'}[state] || 'симуляция'));
+}
 async function refresh() {
   if (refreshPending) return;
   refreshPending = true;
@@ -352,12 +373,18 @@ async function setMode(mode) {
 }
 
 async function command(action) {
+  if (commandPending || (lastMotorState === 'waiting' && action !== 'stop')) return;
+  commandPending = true;
+  updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
-    text('commandInfo',
-      'Команда «' + action + '» обработана в симуляции. GPIO не изменялись.');
+    await refresh();
   } catch (e) {
     alert(e.message);
+  } finally {
+    commandPending = false;
+    await refresh();
+    updateManualButtons(lastMotorState, 0);
   }
 }
 
