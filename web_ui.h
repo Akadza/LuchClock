@@ -13,8 +13,8 @@ static const char WEB_UI[] PROGMEM = R"LUCHHTML(
 <style>
 :root {
   color-scheme: dark;
-  --bg:#10141c; --panel:#1b222e; --line:#303a49;
-  --text:#f0f3f8; --muted:#a1acbc; --green:#58d6a0;
+  --bg:#101318; --panel:#191f27; --line:#303843;
+  --text:#f0f3f8; --muted:#98a5b6; --green:#58d6a0;
   --yellow:#f1c46c; --red:#f27c80; --blue:#79aefa;
 }
 * {box-sizing:border-box}
@@ -22,7 +22,7 @@ body {
   margin:0; background:var(--bg); color:var(--text);
   font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
 }
-main {max-width:850px;margin:auto;padding:22px 15px 50px}
+main {max-width:1000px;margin:auto;padding:24px 18px 42px}
 header,.between {display:flex;justify-content:space-between;align-items:center;gap:12px}
 header {margin-bottom:20px}
 h1 {font-size:23px;margin:0 0 4px}
@@ -30,7 +30,7 @@ h2 {font-size:16px;margin:0}
 small,.muted {color:var(--muted)}
 .card {
   background:var(--panel);border:1px solid var(--line);
-  border-radius:16px;padding:20px;margin-bottom:15px;
+  border-radius:14px;padding:20px;margin-bottom:12px;
 }
 .pill {
   padding:7px 11px;border-radius:25px;background:#28382f;
@@ -39,41 +39,47 @@ small,.muted {color:var(--muted)}
 .time-grid {display:grid;grid-template-columns:1fr 1fr;gap:15px}
 .time {font-size:clamp(24px,5vw,39px);font-weight:700;letter-spacing:1px}
 .label {color:var(--muted);font-size:12px;margin-bottom:7px}
-.status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:20px}
+.status-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
 .status {
   background:#252e3b;border-radius:11px;padding:12px;
-  min-height:76px;
+  min-height:65px;
 }
 .status .name {font-size:12px;color:var(--muted);margin-bottom:9px}
 .status .value {font-size:13px;font-weight:600}
 .ok {color:var(--green)}
 .warn {color:var(--yellow)}
 .bad {color:var(--red)}
-.section-title {margin-bottom:16px}
-.mode {display:flex;gap:8px}
+.section-title {margin-bottom:12px}
+.mode {display:flex;gap:4px;padding:4px;background:#111720;border:1px solid var(--line);border-radius:11px}
 button {
   border:1px solid var(--line);background:#2a3443;
-  color:var(--text);padding:11px 15px;border-radius:10px;
+  color:var(--text);padding:9px 13px;border-radius:8px;
   font:inherit;font-size:13px;cursor:pointer;
 }
-button.active {background:#24456a;border-color:#477cb4}
+button.active {background:#294966;border-color:#426b91}
 button:disabled {opacity:.45;cursor:not-allowed}
 button:active:not(:disabled) {transform:scale(.98)}
 .controls {display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:15px}
 .stop {border-color:#86525b;color:#ffb6ba}
 .info {
   padding:12px;background:#252e3b;border-radius:10px;
-  font-size:13px;color:var(--muted);margin-top:13px;
+  font-size:13px;color:var(--muted);margin-top:10px;
 }
-.diag {display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.diag {display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .diag-item {
-  background:#252e3b;border-radius:10px;padding:13px;
+  background:#222b35;border-radius:9px;padding:11px 13px;
 }
 .diag-item .value {margin-top:6px;font-size:13px}
 .log {max-height:220px;overflow-y:auto}
-.event {padding:11px 0;border-bottom:1px solid var(--line)}
+.event {display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
 .event:last-child {border:0}
-.event .when {color:var(--muted);font-size:11px;margin-top:5px}
+.event .when {color:var(--muted);font-size:11px;white-space:nowrap;order:-1;min-width:135px}
+[hidden] {display:none !important}
+.mode button {border:0;background:transparent}
+.mode button.active {background:#294966}
+#autoInfo {display:none}
+#manualPanel {border-top:1px solid var(--line);padding-top:13px;margin-top:14px}
+#manualPanel .info {background:transparent;padding:4px 0 0}
 footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 @media(max-width:600px) {
   .card {padding:15px}
@@ -83,6 +89,8 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
   .mode {width:100%}
   .mode button {flex:1}
   .controls button {padding:11px 5px}
+  .event {display:block}
+  .event .when {display:block;margin-bottom:5px}
 }
 </style>
 </head>
@@ -135,7 +143,6 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
-  <div id="autoInfo" class="info">Автоматический режим выбран.</div>
   <div id="manualPanel" hidden>
     <div class="controls">
       <button onclick="command('backward')">← Назад</button>
@@ -184,7 +191,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 </section>
 
 <footer>
-  LuchClock v0.2 · Тестовый режим ·
+  LuchClock v0.3 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -206,7 +213,6 @@ function renderStatus(s) {
   $('manualBtn').classList.toggle('active', s.mode === 'manual');
 
   $('manualPanel').hidden = s.mode !== 'manual';
-  $('autoInfo').hidden = s.mode !== 'auto';
 
   text(
     'wifi',
