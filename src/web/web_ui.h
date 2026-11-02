@@ -233,6 +233,16 @@ main {max-width:1024px}
  .event .when {display:block;flex:none}
  .event > div:first-child {display:block}
 }
+
+/* Stable event columns, including relative time before NTP sync. */
+.event {display:grid;grid-template-columns:minmax(0,184px) minmax(0,1fr);gap:16px;align-items:start;justify-content:initial}
+.event .when {grid-column:1;grid-row:1;order:initial;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.event > div:first-child {grid-column:2;grid-row:1;order:initial;min-width:0;overflow-wrap:anywhere;text-align:left;line-height:1.5}
+@media (max-width:600px) {
+ .event {grid-template-columns:minmax(0,1fr);gap:4px}
+ .event .when {grid-column:1;grid-row:1;margin:0}
+ .event > div:first-child {grid-column:1;grid-row:2}
+}
 </style>
 </head>
 <body>
@@ -447,7 +457,7 @@ function renderStatus(s) {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
       s.auto_ready ? 'Контроллер готов' : 'Автоматический режим не готов');
     text('modeState', s.mode_transition ? 'Ожидание ' + Math.ceil(s.mode_wait_ms / 1000) + ' с · запуск запрещён' :
-      s.auto_ready ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода');
+      s.auto_ready ? 'Автоматическое движение пока не реализовано' : (s.motor_state === 'stopped' ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода'));
   }
   if (s.mode === 'auto') {
     text('modeHint', s.mode_transition ? 'Переключение · ожидание остановки' :
