@@ -134,6 +134,64 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
   .event {display:block}
   .event .when {display:block;margin-bottom:5px}
 }
+
+/* Unslop polish: precise instrument panel, quiet surfaces, 4px rhythm. */
+:root {--bg:#111418;--panel:#1a1e23;--line:#30363d;--text:#eef0f2;--muted:#aab2bb;--green:#70c9a0;--yellow:#e4bc72;--red:#eb8588;--blue:#9ebcda;--raised:#242a30}
+body {line-height:1.45}
+main {max-width:1120px;padding:24px 24px 32px}
+header {margin-bottom:20px}
+h1 {font-size:24px;font-weight:500;letter-spacing:0;line-height:1.2}
+h2 {font-size:15px;font-weight:500}
+.card {background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-bottom:16px}
+.pill {border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);font-weight:500;padding:6px 10px}
+.time-grid {gap:24px}
+.time {font-size:clamp(28px,5vw,40px);font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.25}
+.label {font-size:13px;margin-bottom:8px}
+.section-title {margin-bottom:16px}
+.mode {background:var(--bg);border-radius:10px}
+button {background:var(--raised);border-color:var(--line);padding:10px 16px;border-radius:8px;font-size:14px;min-height:40px;transition:background-color .16s ease,border-color .16s ease,color .16s ease}
+button:hover:not(:disabled) {background:#303840}
+button:focus-visible {outline:2px solid var(--blue);outline-offset:3px}
+.mode button.active {background:#39434e;color:var(--text)}
+.controls button.running,.controls button.running:disabled {background:#25453a!important;border-color:#527d68!important;color:#eaf7f0!important;box-shadow:none}
+button:disabled {background:#1b2026!important;border-color:#30363d!important;color:#89939f!important;box-shadow:none}
+.stop {background:#553035;border-color:#875158;color:#fff;font-weight:500}
+.stop:hover:not(:disabled) {background:#683a40}
+#controlArea {min-height:120px;margin-top:12px;padding-top:16px}
+#autoPanel {font-size:14px}
+#modeState {font-size:13px;margin-top:8px}
+.controls {gap:12px}
+.diag {gap:12px}
+.diag-item {background:var(--raised);border:1px solid #343b43;border-radius:10px;padding:16px}
+.diag-item .label {color:var(--muted);font-weight:400;margin-bottom:4px}
+.diag-item .value {margin-top:4px;font-size:14px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.log {scrollbar-color:#697580 var(--raised)}
+.event {gap:20px;padding:12px 0}
+.event .when {font-variant-numeric:tabular-nums;font-size:12px;min-width:156px}
+footer {margin-top:16px;font-variant-numeric:tabular-nums}
+@media (min-width:800px) and (min-height:650px) {
+ main {height:auto;min-height:100dvh;display:block;overflow:visible}
+ .card {padding:20px 24px;margin-bottom:16px}
+ .card:last-of-type {display:block;min-height:0}
+ .card:last-of-type .log {max-height:240px}
+ .event {padding:12px 0}
+}
+@media (max-width:600px) {
+ main {padding:16px}
+ header {gap:8px;margin-bottom:16px}
+ h1 {font-size:21px}
+ .card {padding:16px;margin-bottom:12px}
+ .time-grid {gap:12px}
+ .time {font-size:clamp(24px,6vw,34px)}
+ .diag-item {padding:12px}
+ .controls {gap:8px}
+ .controls button {min-height:44px}
+ .pill {font-size:11px;padding:6px 8px}
+}
+@media (prefers-reduced-motion:reduce) {
+ #autoPanel,#manualPanel {animation:none}
+ button,#controlArea,#transitionBar {transition:none}
+}
 </style>
 </head>
 <body>
@@ -143,7 +201,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
     <h1>Башенные часы</h1>
     <small>LuchClock · ESP8266</small>
   </div>
-  <span class="pill" id="overall">Загрузка...</span>
+  <span class="pill" id="overall" role="status" aria-live="polite">Загрузка...</span>
 </header>
 
 <section class="card">
@@ -230,7 +288,7 @@ footer {text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 <section class="card">
   <div class="between section-title">
     <h2>Журнал событий</h2>
-    <small>Последние события</small>
+    <small>История работы контроллера</small>
   </div>
   <div class="log" id="log">
     <small>Загрузка журнала...</small>
