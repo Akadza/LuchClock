@@ -306,9 +306,9 @@ void handleEvents() {
     String eventTime = formatEventTime(events[i].timestamp);
 
     if (eventTime.length() == 0) {
-      eventTime = "Время неизвестно (+";
+      eventTime = "После запуска: +";
       eventTime += String(events[i].uptimeSeconds);
-      eventTime += " сек после запуска)";
+      eventTime += " с";
     }
 
     json += F("{\"time\":\"");
