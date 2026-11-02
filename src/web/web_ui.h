@@ -192,6 +192,47 @@ footer {margin-top:16px;font-variant-numeric:tabular-nums}
  #autoPanel,#manualPanel {animation:none}
  button,#controlArea,#transitionBar {transition:none}
 }
+
+/* Desktop instrument console: fit the viewport, scroll events only. */
+main {max-width:1024px}
+.pill.ok {color:var(--green);border-color:#38624f;background:#20352c}
+.pill.warn {color:var(--yellow);border-color:#695535;background:#352c20}
+.pill.bad {color:var(--red);border-color:#714044;background:#39252a}
+.event {justify-content:flex-start;align-items:baseline;gap:16px}
+.event .when {order:0;flex:0 0 152px;min-width:0}
+.event > div:first-child {order:1;flex:1;min-width:0;text-align:left}
+@media (min-width:800px) and (min-height:650px) {
+ main {height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding-top:16px;padding-bottom:12px}
+ header {flex:none;margin-bottom:12px}
+ .card {flex:none;margin-bottom:12px;padding:14px 20px}
+ .card:first-of-type .time {font-size:clamp(28px,4vh,36px)}
+ .card:first-of-type .time-grid {gap:16px}
+ .section-title {margin-bottom:10px}
+ #controlArea {min-height:82px;margin-top:8px;padding-top:8px}
+ #autoPanel {padding:4px 0}
+ #modeState {margin-top:4px}
+ .diag {gap:8px}
+ .diag-item {padding:10px 12px}
+ .diag-item .label {margin-bottom:2px}
+ .diag-item .value {margin-top:2px}
+ .card:last-of-type {flex:1;min-height:100px;display:flex;flex-direction:column}
+ .card:last-of-type .log {flex:1;min-height:0;max-height:none}
+ .event {padding:8px 0}
+ footer {flex:none;margin-top:0;font-size:11px}
+}
+@media (min-width:800px) and (max-height:750px) {
+ main {padding-top:10px;padding-bottom:8px}
+ header {margin-bottom:8px}
+ .card {margin-bottom:8px;padding:10px 16px}
+ #controlArea {min-height:66px}
+ .diag-item {padding:8px 10px}
+ .card:last-of-type {min-height:80px}
+ .event {padding:6px 0}
+}
+@media (max-width:600px) {
+ .event .when {display:block;flex:none}
+ .event > div:first-child {display:block}
+}
 </style>
 </head>
 <body>
@@ -404,7 +445,7 @@ function renderStatus(s) {
   $('manualBtn').title = (s.mode === 'auto' && s.mode_transition) ? 'Дождитесь завершения защитной паузы' : '';
   if (s.mode === 'auto') {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
-      s.auto_ready ? 'Автоматический режим готов' : 'Автоматический режим не готов');
+      s.auto_ready ? 'Контроллер готов' : 'Автоматический режим не готов');
     text('modeState', s.mode_transition ? 'Ожидание ' + Math.ceil(s.mode_wait_ms / 1000) + ' с · запуск запрещён' :
       s.auto_ready ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода');
   }
@@ -416,11 +457,11 @@ function renderStatus(s) {
   }
 
   if (s.ntp_recent) {
-    text('overall', 'NTP работает');
+    text('overall', 'NTP работает', 'pill ok');
   } else if (s.ntp_synced) {
-    text('overall', 'Проверить NTP');
+    text('overall', 'Проверить NTP', 'pill warn');
   } else {
-    text('overall', 'Ожидание NTP');
+    text('overall', 'Ожидание NTP', 'pill warn');
   }
 
   text(
@@ -487,7 +528,7 @@ async function refresh() {
   } catch (e) {
     statusFailures++;
     if (statusFailures >= 3) {
-      text('overall', 'Связь с ESP нестабильна');
+      text('overall', 'Связь с ESP нестабильна', 'pill bad');
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
       statusKnown = false;
