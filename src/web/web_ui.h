@@ -290,11 +290,12 @@ main {max-width:1024px}
   <div class="between section-title">
     <div class="mode-heading"><h2>Режим работы</h2><small id="modeHint">Автоматический · ожидание времени</small></div>
     <div class="mode">
+      <button id="offBtn" onclick="setMode('off')">Выключен</button>
       <button id="autoBtn" onclick="setMode('auto')">Автоматический</button>
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
-  <div id="controlArea">
+  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><div class="info">Для работы выберите режим.</div><button id="resetFaultBtn" hidden onclick="resetFault()">Сбросить аварию</button></div>
   <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
@@ -303,7 +304,7 @@ main {max-width:1024px}
       <button id="stopBtn" class="stop" onclick="sendMotorCommand('stop')">■ Стоп</button>
       <button id="forwardBtn" onclick="sendMotorCommand('forward')">Вперёд →</button>
     </div>
-    <div id="manualProgress" hidden><div id="transitionTrack"><div id="manualBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div>
+    <div id="runProgress" hidden style="max-width:440px;margin:10px auto"><div class="between"><small>Работа двигателя</small><small id="runTimer">00:00 / 15:00</small></div><div id="transitionTrack"><div id="runBar" style="height:100%;width:0;background:var(--green)"></div></div></div><div id="manualProgress" hidden><div id="transitionTrack"><div id="manualBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div>
     <div class="info" id="commandInfo">
       Тестовый выход D5 / GPIO14: вперёд — 3,3 В, стоп — 0 В.
     </div>
@@ -311,6 +312,7 @@ main {max-width:1024px}
   </div>
 </section>
 
+<section class="card"><div class="between section-title"><h2>Настройки</h2><button onclick="toggleSettings()">Открыть / закрыть</button></div><div id="settingsPanel" hidden><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно, «Сохранить» — во flash. Только при остановленном двигателе.</div><div class="between" style="margin-top:10px"><small id="settingsMessage"></small><div><button onclick="submitSettings('apply')">Применить</button> <button onclick="submitSettings('save')">Сохранить</button></div></div></div></section>
 <section class="card">
   <div class="between section-title">
     <h2>Диагностика</h2>
@@ -347,14 +349,14 @@ main {max-width:1024px}
 </section>
 
 <footer>
-  LuchClock v0.3 · Тестовый режим ·
+  LuchClock v1.3 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
-let currentMode = 'auto';
+let currentMode = 'off';
 let modeRequestPending = false;
 let lastLogSignature = '';
 let refreshPending = false;
@@ -406,7 +408,8 @@ function renderStatus(s) {
   } else {
     text('time', s.time_local || '--:--:--');
 
-    if (s.ntp_recent) {
+    if(s.mode==='off')text('modeHint','Выключен · выход D5 отключён');
+  if (s.ntp_recent) {
       text('ntp', 'Синхронизировано', 'value ok');
 
       text(
@@ -449,9 +452,11 @@ function renderStatus(s) {
   updateManualButtons(lastMotorState, lastMotorWait);
   updateProgress();
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
-  $('autoBtn').disabled = modeRequestPending || (s.mode === 'manual' && !s.can_auto);
+  $('autoBtn').disabled = modeRequestPending || (s.mode !== 'auto' && !s.can_auto);
+  $('offBtn').disabled = modeRequestPending || s.mode === 'off';
+  $('resetFaultBtn').hidden = !(s.mode === 'off' && s.auto_fault);
   $('autoBtn').title = (s.mode === 'manual' && !s.can_auto) ? 'Сначала нажмите Стоп и дождитесь остановки' : '';
-  $('manualBtn').disabled = modeRequestPending || (s.mode === 'auto' && (s.mode_transition || s.motor_state !== 'stopped'));
+  $('manualBtn').disabled = modeRequestPending || (s.mode !== 'manual' && (s.mode_transition || s.motor_state !== 'stopped'));
   $('manualBtn').title = (s.mode === 'auto' && s.mode_transition) ? 'Дождитесь завершения защитной паузы' : '';
   if (s.mode === 'auto') {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
@@ -484,10 +489,12 @@ function renderStatus(s) {
 
 function showMode(mode) {
   currentMode = mode;
+  $('offBtn').classList.toggle('active', mode === 'off');
   $('autoBtn').classList.toggle('active', mode === 'auto');
   $('manualBtn').classList.toggle('active', mode === 'manual');
   $('manualPanel').hidden = mode !== 'manual';
-  $('autoPanel').hidden = mode === 'manual';
+  $('autoPanel').hidden = mode !== 'auto';
+  $('offPanel').hidden = mode !== 'off';
   text('modeHint', mode === 'manual' ? 'Ручное управление · тест GPIO14' : 'Автоматический режим');
 }
 
@@ -502,6 +509,14 @@ function updateProgress() {
   const total = s.mode_transition ? (s.mode_wait_total_ms || 1000) : (s.motor_wait_total_ms || 1000);
   const pct = Math.max(0, Math.min(100, (total - remaining) / total * 100));
   $('autoProgress').hidden = !(active && s.mode === 'auto');
+  const run = s.mode==='manual' && s.motor_state==='forward';
+  $('runProgress').hidden=!run;
+  if(run){
+    const ms=Math.min(s.motor_limit_ms,s.motor_run_ms+Math.max(0,Date.now()-lastStatusAt));
+    const fmt=v=>String(Math.floor(v/60000)).padStart(2,'0')+':'+String(Math.floor(v/1000)%60).padStart(2,'0');
+    text('runTimer',fmt(ms)+' / '+fmt(s.motor_limit_ms));
+    $('runBar').style.width=Math.min(100,100*ms/s.motor_limit_ms)+'%';
+  }
   $('manualProgress').hidden = !(active && s.mode === 'manual');
   $('autoBar').style.width = pct + '%';
   $('manualBar').style.width = pct + '%';
@@ -520,7 +535,8 @@ function updateManualButtons(state, remaining) {
   }
   $('forwardBtn').classList.toggle('running', state === 'forward');
   $('backwardBtn').classList.toggle('running', state === 'reverse');
-  if (state === 'fault') text('commandInfo', 'Авария привода · управление заблокировано');
+  if(s && s.manual_pause_ms>0)text('commandInfo','Пауза после лимита · '+Math.ceil(s.manual_pause_ms/1000)+' с');
+  else if (state === 'fault') text('commandInfo', 'Авария привода · управление заблокировано');
   else if (transition) text('commandInfo', 'Переключение режима · пауза ' + Math.ceil((s.mode_wait_ms || 0) / 1000) + ' с');
   else if (state === 'waiting') text('commandInfo', 'Остановка · защитная пауза ' + Math.ceil(remaining / 1000) + ' с');
   else if (pendingAction) text('commandInfo', 'Ожидание подтверждения команды от ESP');
