@@ -118,7 +118,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"LuchClock\",");
-  json += F("\"version\":\"1.6\",");
+  json += F("\"version\":\"1.7\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -384,7 +384,6 @@ void handleSettingsGet(){
   json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(runtimeSettings.encoderPollMs);sep=",";
   json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(runtimeSettings.encoderProbeMs);sep=",";
   json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(runtimeSettings.encoderStableSamples);sep=",";
-  json+=sep+String(char(34))+"ntpRequestSec"+char(34)+":"+String(runtimeSettings.ntpRequestSec);sep=",";
   json+=","+String(char(34))+"_saved"+char(34)+":";
   json+=settingsPersistedMatches()?"true":"false";
   json+="}";
@@ -410,7 +409,6 @@ void handleSettingsPost(){
      !readSetting("encoderPollMs",next.encoderPollMs) ||
      !readSetting("encoderProbeMs",next.encoderProbeMs) ||
      !readSetting("encoderStableSamples",next.encoderStableSamples) ||
-     !readSetting("ntpRequestSec",next.ntpRequestSec) ||
      !settingsValidate(next)){
     server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
     return;
@@ -469,7 +467,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.6 started");
+  Serial.println("[WEB] HTTP server v1.7 started");
 }
 
 void webLoop() {
