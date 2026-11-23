@@ -248,6 +248,7 @@ main {max-width:1024px}
 .gear-button{font-size:24px;width:44px;height:44px;padding:0;line-height:1}
 .off-note{font-size:13px;color:var(--muted);margin:6px 0 0;background:none;border:0;padding:0}
 body.modal-open{overflow:hidden}
+.settings-overlay[hidden]{display:none!important}
 .settings-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:16px}
 .settings-dialog{width:min(740px,100%);max-height:min(92dvh,900px);background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;min-height:0;box-shadow:0 24px 70px rgba(0,0,0,.45)}
 .settings-heading{padding:16px 20px;border-bottom:1px solid var(--line);flex-direction:row;align-items:center}
@@ -617,8 +618,8 @@ async function setMode(mode) {
     // Не снимаем защитную блокировку до получения актуального статуса ESP.
     await refresh();
     if (lastStatus) {
-      $('autoBtn').disabled = lastStatus.mode === 'manual' && !lastStatus.can_auto;
-      $('manualBtn').disabled = lastStatus.mode === 'auto' &&
+      $('autoBtn').disabled = !lastStatus.encoder_valid || !lastStatus.can_auto;
+      $('manualBtn').disabled = !lastStatus.encoder_valid || lastStatus.auto_fault ||
         (lastStatus.mode_transition || lastStatus.motor_state !== 'stopped');
     }
   }
