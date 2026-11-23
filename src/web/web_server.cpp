@@ -20,7 +20,6 @@ static bool modeTransition = false;
 static bool autoReady = false;
 static bool previousAutoFault = false;
 static unsigned long previousManualPause = 0;
-static bool encoderWasValid = false;
 
 static unsigned long modeWaitRemainingMs() {
   if (!modeTransition) return 0;
@@ -119,7 +118,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"LuchClock\",");
-  json += F("\"version\":\"1.4\",");
+  json += F("\"version\":\"1.5\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -440,7 +439,6 @@ void webSetup() {
   eventCount = 0;
   previousAutoFault=false;
   previousManualPause=0;
-  encoderWasValid=false;
 
   webAddEvent("Контроллер запущен");
 
@@ -463,7 +461,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.4 started");
+  Serial.println("[WEB] HTTP server v1.5 started");
 }
 
 void webLoop() {
@@ -475,7 +473,6 @@ void webLoop() {
     modeTransition=false;motorSetAutoMode(false);
     webAddEvent("Энкодер недоступен: переход в Выключен");
   }
-  encoderWasValid=encoderNowValid;
   const bool fault=motorAutoFault();
   if(fault && !previousAutoFault)webAddEvent("КРИТИЧЕСКАЯ ОШИБКА: привод заблокирован (лимит или энкодер)");
   previousAutoFault=fault;
