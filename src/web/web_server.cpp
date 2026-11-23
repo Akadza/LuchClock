@@ -118,7 +118,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"LuchClock\",");
-  json += F("\"version\":\"0.3\",");
+  json += F("\"version\":\"1.4\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -366,6 +366,12 @@ void handleSettingsGet(){
   json+=",\\"calibrationGuardSec\\":"+String(runtimeSettings.calibrationGuardSec);
   json+=",\\"noMotionWarnSec\\":"+String(runtimeSettings.noMotionWarnSec);
   json+=",\\"autoStepMin\\":"+String(runtimeSettings.autoStepMin);
+  json+=",\\\"wifiReconnectMs\\\":"+String(runtimeSettings.wifiReconnectMs);
+  json+=",\\\"wifiDiagnosticMs\\\":"+String(runtimeSettings.wifiDiagnosticMs);
+  json+=",\\\"ntpStaleSec\\\":"+String(runtimeSettings.ntpStaleSec);
+  json+=",\\\"encoderPollMs\\\":"+String(runtimeSettings.encoderPollMs);
+  json+=",\\\"encoderProbeMs\\\":"+String(runtimeSettings.encoderProbeMs);
+  json+=",\\\"encoderStableSamples\\\":"+String(runtimeSettings.encoderStableSamples);
   json+="}";
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
@@ -382,7 +388,14 @@ void handleSettingsPost(){
      !readSetting("manualPauseSec",next.manualPauseSec) ||
      !readSetting("calibrationGuardSec",next.calibrationGuardSec) ||
      !readSetting("noMotionWarnSec",next.noMotionWarnSec) ||
-     !readSetting("autoStepMin",next.autoStepMin) || !settingsValidate(next)){
+     !readSetting("autoStepMin",next.autoStepMin) ||
+     !readSetting("wifiReconnectMs",next.wifiReconnectMs) ||
+     !readSetting("wifiDiagnosticMs",next.wifiDiagnosticMs) ||
+     !readSetting("ntpStaleSec",next.ntpStaleSec) ||
+     !readSetting("encoderPollMs",next.encoderPollMs) ||
+     !readSetting("encoderProbeMs",next.encoderProbeMs) ||
+     !readSetting("encoderStableSamples",next.encoderStableSamples) ||
+     !settingsValidate(next)){
     server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
     return;
   }
@@ -440,7 +453,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.3 started");
+  Serial.println("[WEB] HTTP server v1.4 started");
 }
 
 void webLoop() {
