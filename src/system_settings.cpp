@@ -119,3 +119,11 @@ bool settingsSave() {
   EEPROM.put(0,stored);
   return EEPROM.commit();
 }
+
+bool settingsPersistedMatches(){
+  StoredSettings stored={};
+  EEPROM.get(0,stored);
+  return stored.magic==SETTINGS_MAGIC && stored.version==SETTINGS_FORMAT_VERSION &&
+    stored.checksum==checksum(stored) &&
+    memcmp(&stored.values,&runtimeSettings,sizeof(RuntimeSettings))==0;
+}
