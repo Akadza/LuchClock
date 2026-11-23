@@ -20,6 +20,7 @@ static bool modeTransition = false;
 static bool autoReady = false;
 static bool previousAutoFault = false;
 static unsigned long previousManualPause = 0;
+static bool encoderWasValid = false;
 
 static unsigned long modeWaitRemainingMs() {
   if (!modeTransition) return 0;
@@ -184,9 +185,10 @@ void handleStatus() {
   json += (manualMode && modeIsReady() && motorCanForward()) ? "true" : "false";
   json += F(",\"can_reverse\":");
   json += (manualMode && modeIsReady() && motorCanReverse()) ? "true" : "false";
-  json += F(",\"can_stop\":true");
+  json += F(",\"can_stop\":");
+  json += (manualMode && (motorState()==MOTOR_FORWARD || motorState()==MOTOR_REVERSE)) ? "true" : "false";
   json += F(",\"can_auto\":");
-  json += (motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
+  json += (encoderValid() && motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
 
   json += F("}");
 
@@ -206,6 +208,10 @@ void handleMode() {
   }
 
   String mode = server.arg("value");
+  if (mode == currentMode) {server.send(200,"application/json","{\\\"ok\\\":true}");return;}
+  if (mode != "off" && !encoderValid()) {
+    server.send(409,"text/plain; charset=utf-8","Энкодер не подключён: доступен только режим Выключен");return;
+  }
 
   if (mode != "off" && motorAutoFault()) {
     server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
@@ -292,6 +298,9 @@ void handleCommand() {
     return;
   }
 
+  if (action == "stop" && motorState()!=MOTOR_FORWARD && motorState()!=MOTOR_REVERSE) {
+    server.send(409,"text/plain; charset=utf-8","Двигатель уже остановлен");return;
+  }
   if (action != "stop" && (!modeIsReady() || !encoderValid())) {
     server.send(409, "text/plain", "Mode transition or motor cooldown active");
     return;
@@ -431,6 +440,7 @@ void webSetup() {
   eventCount = 0;
   previousAutoFault=false;
   previousManualPause=0;
+  encoderWasValid=false;
 
   webAddEvent("Контроллер запущен");
 
@@ -457,6 +467,15 @@ void webSetup() {
 }
 
 void webLoop() {
+  const bool encoderNowValid=encoderValid();
+  if (!encoderNowValid && currentMode!="off") {
+    // При потере датчика во время движения motorLoop уже фиксирует аварию.
+    // Режим OFF сохраняет аварийную блокировку до ручного сброса.
+    motorStop();currentMode="off";manualMode=false;autoReady=false;
+    modeTransition=false;motorSetAutoMode(false);
+    webAddEvent("Энкодер недоступен: переход в Выключен");
+  }
+  encoderWasValid=encoderNowValid;
   const bool fault=motorAutoFault();
   if(fault && !previousAutoFault)webAddEvent("КРИТИЧЕСКАЯ ОШИБКА: привод заблокирован (лимит или энкодер)");
   previousAutoFault=fault;
@@ -468,11 +487,9 @@ void webLoop() {
     modeTransition = false;
     if (currentMode=="auto") {
       autoReady = (motorState() == MOTOR_STOPPED);
-      webAddEvent(autoReady
-        ? "Автоматический режим готов (движение пока не реализовано)"
-        : "Автоматический режим: привод не готов");
+      Serial.println(autoReady ? "[MODE] Auto ready" : "[MODE] Auto not ready");
     } else {
-      webAddEvent("Ручное управление разблокировано");
+      Serial.println(F("[MODE] Manual controls unlocked"));
     }
   }
   server.handleClient();
