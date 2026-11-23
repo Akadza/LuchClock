@@ -22,7 +22,7 @@ static bool autoReady = false;
 static unsigned long modeWaitRemainingMs() {
   if (!modeTransition) return 0;
   unsigned long elapsed = millis() - modeChangedAt;
-  return elapsed >= DEFAULT_MODE_DELAY_MS ? 0 : MOTOR_MODE_CHANGE_DELAY_MS - elapsed;
+  return elapsed >= DEFAULT_MODE_DELAY_MS ? 0 : DEFAULT_MODE_DELAY_MS - elapsed;
 }
 static bool modeIsReady() {
   return !modeTransition && motorState() == MOTOR_STOPPED;
@@ -142,11 +142,11 @@ void handleStatus() {
   json += F(",\"encoder_minutes\":");
   json += String(encoderMinutes());
 
-  json += F(",\\"motor_run_ms\\":");json += String(motorRunElapsedMs());
-  json += F(",\\"motor_limit_ms\\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
-  json += F(",\\"manual_pause_ms\\":");json += String(motorManualPauseRemainingMs());
-  json += F(",\\"auto_fault\\":");json += motorAutoFault()?"true":"false";
-  json += F(",\\"uptime_seconds\\":");
+  json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
+  json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
+  json += F(",\"manual_pause_ms\":");json += String(motorManualPauseRemainingMs());
+  json += F(",\"auto_fault\":");json += motorAutoFault()?"true":"false";
+  json += F(",\"uptime_seconds\":");
   json += String(millis() / 1000UL);
 
   json += F(",\"ntp_synced\":");
@@ -184,8 +184,7 @@ void handleStatus() {
   json += (manualMode && modeIsReady() && motorCanReverse()) ? "true" : "false";
   json += F(",\"can_stop\":true");
   json += F(",\"can_auto\":");
-  json += (motorState() == MOTOR_STOPPED && !modeTransition && !manualMode) ||
-          (manualMode && motorState() == MOTOR_STOPPED && !modeTransition) ? "true" : "false";
+  json += (motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
 
   json += F("}");
 
@@ -232,7 +231,7 @@ void handleMode() {
       server.send(409, "text/plain; charset=utf-8", "Сначала остановите привод и дождитесь завершения паузы");
       return;
     }
-    if (manualMode) {
+    if (currentMode != "auto") {
       motorStop();
       manualMode = false;
       currentMode = "auto";
@@ -256,7 +255,7 @@ void handleMode() {
 }
 
 void handleCommand() {
-  if (!manualMode) {
+  if (currentMode != "manual") {
     server.send(
       409,
       "text/plain",
@@ -344,6 +343,67 @@ void handleEvents() {
   );
 }
 
+
+static bool readSetting(const char* name,uint32_t& value) {
+  if(!server.hasArg(name))return false;
+  const String s=server.arg(name);
+  if(s.length()==0 || s.length()>10)return false;
+  for(unsigned int i=0;i<s.length();++i)if(s[i]<'0'||s[i]>'9')return false;
+  const unsigned long v=strtoul(s.c_str(),nullptr,10);
+  if(String(v)!=s)return false;
+  value=v;return true;
+}
+void handleSettingsGet(){
+  String json="{";
+  json+="\\"manualLimitSec\\":"+String(runtimeSettings.manualLimitSec);
+  json+=",\\"autoLimitSec\\":"+String(runtimeSettings.autoLimitSec);
+  json+=",\\"manualPauseSec\\":"+String(runtimeSettings.manualPauseSec);
+  json+=",\\"calibrationGuardSec\\":"+String(runtimeSettings.calibrationGuardSec);
+  json+=",\\"noMotionWarnSec\\":"+String(runtimeSettings.noMotionWarnSec);
+  json+=",\\"autoStepMin\\":"+String(runtimeSettings.autoStepMin);
+  json+="}";
+  server.sendHeader("Cache-Control","no-store");
+  server.send(200,"application/json",json);
+}
+void handleSettingsPost(){
+  // Защитные настройки меняем только при остановленном двигателе.
+  if(motorState()!=MOTOR_STOPPED || modeTransition){
+    server.send(409,"text/plain; charset=utf-8","Остановите двигатель и дождитесь окончания паузы");
+    return;
+  }
+  RuntimeSettings next=runtimeSettings;
+  if(!readSetting("manualLimitSec",next.manualLimitSec) ||
+     !readSetting("autoLimitSec",next.autoLimitSec) ||
+     !readSetting("manualPauseSec",next.manualPauseSec) ||
+     !readSetting("calibrationGuardSec",next.calibrationGuardSec) ||
+     !readSetting("noMotionWarnSec",next.noMotionWarnSec) ||
+     !readSetting("autoStepMin",next.autoStepMin) || !settingsValidate(next)){
+    server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
+    return;
+  }
+  const String operation=server.arg("operation");
+  if(operation!="apply" && operation!="save"){
+    server.send(400,"text/plain","Invalid operation");return;
+  }
+  RuntimeSettings previous=runtimeSettings;
+  runtimeSettings=next;
+  if(operation=="save" && !settingsSave()){
+    runtimeSettings=previous;
+    server.send(500,"text/plain; charset=utf-8","Не удалось сохранить настройки");
+    return;
+  }
+  webAddEvent(operation=="save"?"Настройки сохранены":"Настройки применены временно");
+  server.send(200,"application/json","{\\"ok\\":true}");
+}
+void handleFaultReset(){
+  if(currentMode!="off" || !encoderValid() || !motorResetAutoFault()){
+    server.send(409,"text/plain; charset=utf-8","Перейдите в Выключен, проверьте энкодер и наличие аварии");
+    return;
+  }
+  webAddEvent("Авария сброшена оператором");
+  server.send(200,"application/json","{\\"ok\\":true}");
+}
+
 void webSetup() {
   manualMode = false;
   currentMode = "off";
@@ -380,7 +440,7 @@ void webLoop() {
   if (modeTransition && motorState() != MOTOR_WAITING &&
       (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
     modeTransition = false;
-    if (!manualMode) {
+    if (currentMode=="auto") {
       autoReady = (motorState() == MOTOR_STOPPED);
       webAddEvent(autoReady
         ? "Автоматический режим готов (движение пока не реализовано)"
