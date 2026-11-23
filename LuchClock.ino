@@ -1,9 +1,12 @@
 #include <Arduino.h>
 
 #include "config.h"
-#include "wifi_manager.h"
-#include "time_manager.h"
-#include "web_server.h"
+#include "src/system_settings.h"
+#include "src/network/wifi_manager.h"
+#include "src/network/time_manager.h"
+#include "src/web/web_server.h"
+#include "src/motor/motor_controller.h"
+#include "src/encoder/encoder_reader.h"
 
 void setup() {
   Serial.begin(115200);
@@ -11,9 +14,12 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v0.3");
+  Serial.println("LuchClock v1.5");
   Serial.println("==================");
 
+  motorSetup(); // Сначала гарантируем LOW на D5.
+  settingsSetup(); // Инициализируем безопасный LOW до Wi-Fi.
+  encoderSetup();
   wifiSetup();
   timeSetup();
   webSetup();
@@ -43,6 +49,8 @@ void loop() {
       break;
   }
 
+  encoderLoop();
+  motorLoop();
   webLoop();
 
   yield();

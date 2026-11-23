@@ -3,8 +3,9 @@
 #include <coredecls.h>
 #include <time.h>
 
-#include "config.h"
+#include "../../config.h"
 #include "time_manager.h"
+#include "../system_settings.h"
 
 static volatile bool ntpCallbackPending = false;
 
@@ -116,7 +117,7 @@ TimeEvent timeLoop() {
   }
 
   if (everSynchronized && !syncStale &&
-      millis() - lastSyncMillis >= NTP_STALE_INTERVAL) {
+      millis() - lastSyncMillis >= (runtimeSettings.ntpStaleSec * 1000UL)) {
 
     syncStale = true;
 
