@@ -22,7 +22,25 @@
 #define MAX_AUTO_STEP_MIN 10UL
 #define SETTINGS_EEPROM_BYTES 128
 #define SETTINGS_MAGIC 0x4C434B31UL
-#define SETTINGS_FORMAT_VERSION 1UL
+#define DEFAULT_WIFI_RECONNECT_MS 10000UL
+#define DEFAULT_WIFI_DIAGNOSTIC_MS 15000UL
+#define DEFAULT_NTP_STALE_SEC 10800UL
+#define DEFAULT_ENCODER_POLL_MS 25UL
+#define DEFAULT_ENCODER_PROBE_MS 2000UL
+#define DEFAULT_ENCODER_STABLE_SAMPLES 2UL
+#define MIN_WIFI_RECONNECT_MS 1000UL
+#define MAX_WIFI_RECONNECT_MS 300000UL
+#define MIN_WIFI_DIAGNOSTIC_MS 1000UL
+#define MAX_WIFI_DIAGNOSTIC_MS 300000UL
+#define MIN_NTP_STALE_SEC 60UL
+#define MAX_NTP_STALE_SEC 86400UL
+#define MIN_ENCODER_POLL_MS 5UL
+#define MAX_ENCODER_POLL_MS 100UL
+#define MIN_ENCODER_PROBE_MS 250UL
+#define MAX_ENCODER_PROBE_MS 10000UL
+#define MIN_ENCODER_STABLE_SAMPLES 2UL
+#define MAX_ENCODER_STABLE_SAMPLES 5UL
+#define SETTINGS_FORMAT_VERSION 2UL
 
 struct RuntimeSettings {
   uint32_t manualLimitSec;
@@ -31,6 +49,12 @@ struct RuntimeSettings {
   uint32_t calibrationGuardSec;
   uint32_t noMotionWarnSec;
   uint32_t autoStepMin;
+  uint32_t wifiReconnectMs;
+  uint32_t wifiDiagnosticMs;
+  uint32_t ntpStaleSec;
+  uint32_t encoderPollMs;
+  uint32_t encoderProbeMs;
+  uint32_t encoderStableSamples;
 };
 extern RuntimeSettings runtimeSettings;
 void settingsSetup();
