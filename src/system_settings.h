@@ -40,7 +40,10 @@
 #define MAX_ENCODER_PROBE_MS 10000UL
 #define MIN_ENCODER_STABLE_SAMPLES 2UL
 #define MAX_ENCODER_STABLE_SAMPLES 5UL
-#define SETTINGS_FORMAT_VERSION 2UL
+#define DEFAULT_NTP_REQUEST_SEC 3600UL  // Период повторного запроса NTP
+#define MIN_NTP_REQUEST_SEC 60UL
+#define MAX_NTP_REQUEST_SEC 86400UL
+#define SETTINGS_FORMAT_VERSION 3UL
 
 struct RuntimeSettings {
   uint32_t manualLimitSec;
@@ -55,9 +58,11 @@ struct RuntimeSettings {
   uint32_t encoderPollMs;
   uint32_t encoderProbeMs;
   uint32_t encoderStableSamples;
+  uint32_t ntpRequestSec;
 };
 extern RuntimeSettings runtimeSettings;
 void settingsSetup();
 bool settingsSave();
+bool settingsPersistedMatches();
 bool settingsValidate(const RuntimeSettings& value);
 void settingsDefaults(RuntimeSettings& value);

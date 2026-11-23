@@ -29,6 +29,7 @@ void settingsDefaults(RuntimeSettings& s) {
   s.encoderPollMs=DEFAULT_ENCODER_POLL_MS;
   s.encoderProbeMs=DEFAULT_ENCODER_PROBE_MS;
   s.encoderStableSamples=DEFAULT_ENCODER_STABLE_SAMPLES;
+  s.ntpRequestSec=DEFAULT_NTP_REQUEST_SEC;
 }
 bool settingsValidate(const RuntimeSettings& s) {
   return s.manualLimitSec>=MIN_MOTOR_LIMIT_SEC && s.manualLimitSec<=MAX_MOTOR_LIMIT_SEC &&
@@ -42,7 +43,19 @@ bool settingsValidate(const RuntimeSettings& s) {
     s.ntpStaleSec>=MIN_NTP_STALE_SEC && s.ntpStaleSec<=MAX_NTP_STALE_SEC &&
     s.encoderPollMs>=MIN_ENCODER_POLL_MS && s.encoderPollMs<=MAX_ENCODER_POLL_MS &&
     s.encoderProbeMs>=MIN_ENCODER_PROBE_MS && s.encoderProbeMs<=MAX_ENCODER_PROBE_MS &&
-    s.encoderStableSamples>=MIN_ENCODER_STABLE_SAMPLES && s.encoderStableSamples<=MAX_ENCODER_STABLE_SAMPLES;
+    s.encoderStableSamples>=MIN_ENCODER_STABLE_SAMPLES && s.encoderStableSamples<=MAX_ENCODER_STABLE_SAMPLES &&
+    s.ntpRequestSec>=MIN_NTP_REQUEST_SEC && s.ntpRequestSec<=MAX_NTP_REQUEST_SEC;
+}
+struct V2Values {
+  uint32_t manualLimitSec,autoLimitSec,manualPauseSec,calibrationGuardSec,noMotionWarnSec,autoStepMin;
+  uint32_t wifiReconnectMs,wifiDiagnosticMs,ntpStaleSec,encoderPollMs,encoderProbeMs,encoderStableSamples;
+};
+struct V2Stored {uint32_t magic,version;V2Values values;uint32_t checksum;};
+static uint32_t v2Checksum(const V2Stored& s){
+  const uint8_t* p=reinterpret_cast<const uint8_t*>(&s);
+  uint32_t hash=2166136261UL;
+  for(size_t i=0;i<offsetof(V2Stored,checksum);++i)hash=(hash^p[i])*16777619UL;
+  return hash;
 }
 struct LegacyValues {
   uint32_t manualLimitSec, autoLimitSec, manualPauseSec;
@@ -69,6 +82,16 @@ void settingsSetup() {
     runtimeSettings=stored.values;
     Serial.println(F("[SETTINGS] Saved values loaded"));
   } else {
+    V2Stored old2={};EEPROM.get(0,old2);
+    if(old2.magic==SETTINGS_MAGIC && old2.version==2UL && old2.checksum==v2Checksum(old2)){
+      RuntimeSettings migrated=runtimeSettings;
+      memcpy(&migrated,&old2.values,sizeof(V2Values));
+      if(settingsValidate(migrated)){
+        runtimeSettings=migrated;
+        Serial.println(F("[SETTINGS] Migrated v2 settings in RAM"));
+        return;
+      }
+    }
     LegacyStored legacy={};
     EEPROM.get(0,legacy);
     if(legacy.magic==SETTINGS_MAGIC && legacy.version==1UL &&
@@ -95,4 +118,12 @@ bool settingsSave() {
   stored.checksum=checksum(stored);
   EEPROM.put(0,stored);
   return EEPROM.commit();
+}
+
+bool settingsPersistedMatches(){
+  StoredSettings stored={};
+  EEPROM.get(0,stored);
+  return stored.magic==SETTINGS_MAGIC && stored.version==SETTINGS_FORMAT_VERSION &&
+    stored.checksum==checksum(stored) &&
+    memcmp(&stored.values,&runtimeSettings,sizeof(RuntimeSettings))==0;
 }
