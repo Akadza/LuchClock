@@ -4,6 +4,7 @@
 
 #include "../../config.h"
 #include "wifi_manager.h"
+#include "../system_settings.h"
 
 static unsigned long lastReconnectAttempt = 0;
 static unsigned long lastDiagnostic = 0;
@@ -101,7 +102,7 @@ void wifiLoop() {
   }
 
   if (!connected &&
-      millis() - lastReconnectAttempt >= WIFI_RECONNECT_INTERVAL) {
+      millis() - lastReconnectAttempt >= runtimeSettings.wifiReconnectMs) {
 
     lastReconnectAttempt = millis();
 
@@ -112,7 +113,7 @@ void wifiLoop() {
   // Подробная диагностика каждые 15 секунд,
   // только пока соединение отсутствует.
   if (!connected &&
-      millis() - lastDiagnostic >= 15000UL) {
+      millis() - lastDiagnostic >= runtimeSettings.wifiDiagnosticMs) {
 
     lastDiagnostic = millis();
     printWifiDiagnostics();
