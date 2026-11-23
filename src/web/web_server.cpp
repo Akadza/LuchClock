@@ -359,19 +359,19 @@ static bool readSetting(const char* name,uint32_t& value) {
   value=v;return true;
 }
 void handleSettingsGet(){
-  String json="{";
-  json+="\\"manualLimitSec\\":"+String(runtimeSettings.manualLimitSec);
-  json+=",\\"autoLimitSec\\":"+String(runtimeSettings.autoLimitSec);
-  json+=",\\"manualPauseSec\\":"+String(runtimeSettings.manualPauseSec);
-  json+=",\\"calibrationGuardSec\\":"+String(runtimeSettings.calibrationGuardSec);
-  json+=",\\"noMotionWarnSec\\":"+String(runtimeSettings.noMotionWarnSec);
-  json+=",\\"autoStepMin\\":"+String(runtimeSettings.autoStepMin);
-  json+=",\\\"wifiReconnectMs\\\":"+String(runtimeSettings.wifiReconnectMs);
-  json+=",\\\"wifiDiagnosticMs\\\":"+String(runtimeSettings.wifiDiagnosticMs);
-  json+=",\\\"ntpStaleSec\\\":"+String(runtimeSettings.ntpStaleSec);
-  json+=",\\\"encoderPollMs\\\":"+String(runtimeSettings.encoderPollMs);
-  json+=",\\\"encoderProbeMs\\\":"+String(runtimeSettings.encoderProbeMs);
-  json+=",\\\"encoderStableSamples\\\":"+String(runtimeSettings.encoderStableSamples);
+  String json="{", sep="";
+  json+=sep+String(char(34))+"manualLimitSec"+char(34)+":"+String(runtimeSettings.manualLimitSec);sep=",";
+  json+=sep+String(char(34))+"autoLimitSec"+char(34)+":"+String(runtimeSettings.autoLimitSec);sep=",";
+  json+=sep+String(char(34))+"manualPauseSec"+char(34)+":"+String(runtimeSettings.manualPauseSec);sep=",";
+  json+=sep+String(char(34))+"calibrationGuardSec"+char(34)+":"+String(runtimeSettings.calibrationGuardSec);sep=",";
+  json+=sep+String(char(34))+"noMotionWarnSec"+char(34)+":"+String(runtimeSettings.noMotionWarnSec);sep=",";
+  json+=sep+String(char(34))+"autoStepMin"+char(34)+":"+String(runtimeSettings.autoStepMin);sep=",";
+  json+=sep+String(char(34))+"wifiReconnectMs"+char(34)+":"+String(runtimeSettings.wifiReconnectMs);sep=",";
+  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(runtimeSettings.wifiDiagnosticMs);sep=",";
+  json+=sep+String(char(34))+"ntpStaleSec"+char(34)+":"+String(runtimeSettings.ntpStaleSec);sep=",";
+  json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(runtimeSettings.encoderPollMs);sep=",";
+  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(runtimeSettings.encoderProbeMs);sep=",";
+  json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(runtimeSettings.encoderStableSamples);sep=",";
   json+="}";
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
