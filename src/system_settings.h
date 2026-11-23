@@ -63,5 +63,6 @@ struct RuntimeSettings {
 extern RuntimeSettings runtimeSettings;
 void settingsSetup();
 bool settingsSave();
+bool settingsPersistedMatches();
 bool settingsValidate(const RuntimeSettings& value);
 void settingsDefaults(RuntimeSettings& value);
