@@ -264,6 +264,10 @@ body.modal-open{overflow:hidden}
 .event-critical > div:first-child{color:#d78b8d}
 .event-symbol{display:inline-block;margin-right:9px;font-size:14px}
 #runBar{transition:width .16s linear}
+.fault-actions[hidden]{display:none!important}
+.fault-actions{display:flex;justify-content:center;margin-top:10px}
+.fault-reset{background:#4c3034;border-color:#865155;color:#f1d7d9}
+.fault-reset:hover{background:#624044}
 </style>
 </head>
 <body>
@@ -316,7 +320,7 @@ body.modal-open{overflow:hidden}
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
-  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><p class="off-note">Для работы выберите режим.</p><button id="resetFaultBtn" hidden onclick="resetFault()">Сбросить аварию</button></div>
+  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><p class="off-note">Для работы выберите режим.</p></div>
   <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
@@ -331,6 +335,7 @@ body.modal-open{overflow:hidden}
     </div>
   </div>
   </div>
+  <div id="faultActions" hidden class="fault-actions"><button id="resetFaultBtn" class="fault-reset" onclick="resetFault()">Сбросить аварию</button></div>
 </section>
 
 <section class="card">
@@ -369,7 +374,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.6 · Тестовый режим ·
+  LuchClock v1.7 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -482,7 +487,7 @@ function renderStatus(s) {
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   $('autoBtn').disabled = modeRequestPending || (s.mode !== 'auto' && !s.can_auto);
   $('offBtn').disabled = modeRequestPending || s.mode === 'off';
-  $('resetFaultBtn').hidden = !(s.mode === 'off' && s.auto_fault);
+  $('faultActions').hidden = !(s.mode === 'off' && s.auto_fault);
   $('autoBtn').title = (s.mode === 'manual' && !s.can_auto) ? 'Сначала нажмите Стоп и дождитесь остановки' : '';
   $('manualBtn').disabled = modeRequestPending || (s.mode !== 'manual' && (s.mode_transition || s.motor_state !== 'stopped'));
   $('manualBtn').title = (s.mode === 'auto' && s.mode_transition) ? 'Дождитесь завершения защитной паузы' : '';
@@ -714,8 +719,7 @@ const settingFields=[
  ['ntpStaleSec','Устаревание NTP, сек',60,86400],
  ['encoderPollMs','Опрос энкодера, мс',5,100],
  ['encoderProbeMs','Повтор поиска PCF8574, мс',250,10000],
- ['encoderStableSamples','Подтверждающих чтений энкодера',2,5],
- ['ntpRequestSec','Интервал запроса времени NTP, сек',60,86400]
+ ['encoderStableSamples','Подтверждающих чтений энкодера',2,5]
 ];
 let settingsLoaded=false;
 let appliedSettings=null;
@@ -730,9 +734,18 @@ function updateSettingsButtons(){
   $('saveSettingsBtn').disabled=blocked || (!changed && savedSettings);
 }
 function toggleSettings(){
-  const p=$('settingsModal');p.hidden=!p.hidden;
-  document.body.classList.toggle('modal-open',!p.hidden);
-  if(!p.hidden && !settingsLoaded)loadSettings();
+  const p=$('settingsModal');
+  if(p.hidden){
+    p.hidden=false;document.body.classList.add('modal-open');
+    settingsLoaded=false;
+    text('settingsMessage','');
+    loadSettings();
+  }else{
+    p.hidden=true;document.body.classList.remove('modal-open');
+    settingsLoaded=false;appliedSettings=null;
+    $('settingsFields').replaceChildren();
+    text('settingsMessage','');
+  }
 }
 async function loadSettings(){
   try{
@@ -750,7 +763,7 @@ async function loadSettings(){
       item.append(title,input);root.appendChild(item);
     }
     settingsLoaded=true;appliedSettings=currentSettings();savedSettings=!!data._saved;
-    text('settingsMessage',savedSettings?'Настройки сохранены':'Есть настройки, не сохранённые во flash');
+    text('settingsMessage','');
     updateSettingsButtons();
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
 }
