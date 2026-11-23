@@ -349,7 +349,7 @@ main {max-width:1024px}
 </section>
 
 <footer>
-  LuchClock v1.3 · Тестовый режим ·
+  LuchClock v1.4 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -668,7 +668,13 @@ const settingFields=[
  ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
  ['calibrationGuardSec','Защита границы минуты, сек',0,29],
  ['noMotionWarnSec','Предупреждение без движения, сек',1,900],
- ['autoStepMin','Шаг синхронизации, мин',1,10]
+ ['autoStepMin','Шаг синхронизации, мин',1,10],
+ ['wifiReconnectMs','Повтор Wi-Fi, мс',1000,300000],
+ ['wifiDiagnosticMs','Диагностика Wi-Fi, мс',1000,300000],
+ ['ntpStaleSec','Устаревание NTP, сек',60,86400],
+ ['encoderPollMs','Опрос энкодера, мс',5,100],
+ ['encoderProbeMs','Повтор поиска PCF8574, мс',250,10000],
+ ['encoderStableSamples','Подтверждающих чтений энкодера',2,5]
 ];
 let settingsLoaded=false;
 function toggleSettings(){
