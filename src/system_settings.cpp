@@ -44,6 +44,21 @@ bool settingsValidate(const RuntimeSettings& s) {
     s.encoderProbeMs>=MIN_ENCODER_PROBE_MS && s.encoderProbeMs<=MAX_ENCODER_PROBE_MS &&
     s.encoderStableSamples>=MIN_ENCODER_STABLE_SAMPLES && s.encoderStableSamples<=MAX_ENCODER_STABLE_SAMPLES;
 }
+struct LegacyValues {
+  uint32_t manualLimitSec, autoLimitSec, manualPauseSec;
+  uint32_t calibrationGuardSec, noMotionWarnSec, autoStepMin;
+};
+struct LegacyStored {
+  uint32_t magic, version;
+  LegacyValues values;
+  uint32_t checksum;
+};
+static uint32_t legacyChecksum(const LegacyStored& s){
+  const uint8_t* p=reinterpret_cast<const uint8_t*>(&s);
+  uint32_t hash=2166136261UL;
+  for(size_t i=0;i<offsetof(LegacyStored,checksum);++i)hash=(hash^p[i])*16777619UL;
+  return hash;
+}
 void settingsSetup() {
   settingsDefaults(runtimeSettings);
   EEPROM.begin(SETTINGS_EEPROM_BYTES);
@@ -53,7 +68,24 @@ void settingsSetup() {
       stored.checksum==checksum(stored) && settingsValidate(stored.values)) {
     runtimeSettings=stored.values;
     Serial.println(F("[SETTINGS] Saved values loaded"));
-  } else Serial.println(F("[SETTINGS] Defaults loaded"));
+  } else {
+    LegacyStored legacy={};
+    EEPROM.get(0,legacy);
+    if(legacy.magic==SETTINGS_MAGIC && legacy.version==1UL &&
+       legacy.checksum==legacyChecksum(legacy)){
+      RuntimeSettings migrated=runtimeSettings;
+      migrated.manualLimitSec=legacy.values.manualLimitSec;
+      migrated.autoLimitSec=legacy.values.autoLimitSec;
+      migrated.manualPauseSec=legacy.values.manualPauseSec;
+      migrated.calibrationGuardSec=legacy.values.calibrationGuardSec;
+      migrated.noMotionWarnSec=legacy.values.noMotionWarnSec;
+      migrated.autoStepMin=legacy.values.autoStepMin;
+      if(settingsValidate(migrated)){
+        runtimeSettings=migrated;
+        Serial.println(F("[SETTINGS] Migrated v1 settings in RAM; save to persist v2"));
+      }else Serial.println(F("[SETTINGS] Defaults loaded (legacy invalid)"));
+    }else Serial.println(F("[SETTINGS] Defaults loaded"));
+  }
 }
 bool settingsSave() {
   StoredSettings stored={};
