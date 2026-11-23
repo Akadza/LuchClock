@@ -385,7 +385,7 @@ void handleSettingsGet(){
   json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(runtimeSettings.encoderProbeMs);sep=",";
   json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(runtimeSettings.encoderStableSamples);sep=",";
   json+=sep+String(char(34))+"ntpRequestSec"+char(34)+":"+String(runtimeSettings.ntpRequestSec);sep=",";
-  json+=",\\\"_saved\\\":";
+  json+=","+String(char(34))+"_saved"+char(34)+":";
   json+=settingsPersistedMatches()?"true":"false";
   json+="}";
   server.sendHeader("Cache-Control","no-store");
