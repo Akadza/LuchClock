@@ -243,6 +243,19 @@ main {max-width:1024px}
  .event .when {grid-column:1;grid-row:1;margin:0}
  .event > div:first-child {grid-column:1;grid-row:2}
 }
+/* Independent settings dialog with its own scroll; page stays compact. */
+.header-actions{display:flex;align-items:center;gap:10px}
+.gear-button{font-size:24px;width:44px;height:44px;padding:0;line-height:1}
+.off-note{font-size:13px;color:var(--muted);margin:6px 0 0;background:none;border:0;padding:0}
+body.modal-open{overflow:hidden}
+.settings-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:16px}
+.settings-dialog{width:min(740px,100%);max-height:min(92dvh,900px);background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;min-height:0;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+.settings-heading{padding:16px 20px;border-bottom:1px solid var(--line);flex-direction:row;align-items:center}
+.settings-scroll{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:18px 20px;flex:1}
+.settings-footer{border-top:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.settings-footer>div{display:flex;gap:8px}
+#settingsFields input{max-width:100%}
+@media(max-width:600px){.settings-overlay{padding:8px}.settings-dialog{max-height:96dvh}.settings-heading{flex-direction:row}.settings-scroll{padding:12px}.settings-footer{padding:12px}}
 </style>
 </head>
 <body>
@@ -252,7 +265,7 @@ main {max-width:1024px}
     <h1>Башенные часы</h1>
     <small>LuchClock · ESP8266</small>
   </div>
-  <span class="pill" id="overall" role="status" aria-live="polite">Загрузка...</span>
+  <div class="header-actions"><span class="pill" id="overall" role="status" aria-live="polite">Загрузка...</span><button id="settingsButton" class="gear-button" title="Настройки" aria-label="Настройки" onclick="toggleSettings()">⚙</button></div>
 </header>
 
 <section class="card">
@@ -295,7 +308,7 @@ main {max-width:1024px}
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
-  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><div class="info">Для работы выберите режим.</div><button id="resetFaultBtn" hidden onclick="resetFault()">Сбросить аварию</button></div>
+  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><p class="off-note">Для работы выберите режим.</p><button id="resetFaultBtn" hidden onclick="resetFault()">Сбросить аварию</button></div>
   <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
@@ -312,7 +325,6 @@ main {max-width:1024px}
   </div>
 </section>
 
-<section class="card"><div class="between section-title"><h2>Настройки</h2><button onclick="toggleSettings()">Открыть / закрыть</button></div><div id="settingsPanel" hidden><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно, «Сохранить» — во flash. Только при остановленном двигателе.</div><div class="between" style="margin-top:10px"><small id="settingsMessage"></small><div><button onclick="submitSettings('apply')">Применить</button> <button onclick="submitSettings('save')">Сохранить</button></div></div></div></section>
 <section class="card">
   <div class="between section-title">
     <h2>Диагностика</h2>
@@ -349,10 +361,17 @@ main {max-width:1024px}
 </section>
 
 <footer>
-  LuchClock v1.4 · Тестовый режим ·
+  LuchClock v1.5 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
+<div id="settingsModal" class="settings-overlay" hidden onclick="if(event.target===this)toggleSettings()">
+ <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
+  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div></div></div>
+  <div class="settings-footer"><small id="settingsMessage"></small><div><button onclick="submitSettings('apply')">Применить</button> <button onclick="submitSettings('save')">Сохранить</button></div></div>
+ </section>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -495,7 +514,7 @@ function showMode(mode) {
   $('manualPanel').hidden = mode !== 'manual';
   $('autoPanel').hidden = mode !== 'auto';
   $('offPanel').hidden = mode !== 'off';
-  text('modeHint', mode === 'manual' ? 'Ручное управление · тест GPIO14' : 'Автоматический режим');
+  text('modeHint', mode === 'manual' ? 'Ручное управление · тест GPIO14' : mode === 'off' ? 'Выключен · выход D5 отключён' : 'Автоматический режим');
 }
 
 function updateProgress() {
@@ -529,7 +548,11 @@ function updateManualButtons(state, remaining) {
   const allowedBackward = statusKnown && !busy && !transition && motorPermissions.can_reverse && state !== 'reverse';
   $('forwardBtn').disabled = !allowedForward;
   $('backwardBtn').disabled = !allowedBackward;
-  $('stopBtn').disabled = commandPending || !statusKnown || !motorPermissions.can_stop;
+  $('stopBtn').disabled = commandPending || !statusKnown || !motorPermissions.can_stop || (state !== 'forward' && state !== 'reverse');
+  if (s) {
+    $('autoBtn').disabled=modeRequestPending || !s.encoder_valid || !s.can_auto;
+    $('manualBtn').disabled=modeRequestPending || !s.encoder_valid || !!s.auto_fault || (s.mode!=='manual' && (s.mode_transition || s.motor_state!=='stopped'));
+  }
   if (s && s.mode === 'manual') {
     $('autoBtn').disabled = modeRequestPending || !s.can_auto || state !== 'stopped';
   }
@@ -575,8 +598,8 @@ async function post(path) {
 
 async function setMode(mode) {
   if (modeRequestPending || commandPending || mode === currentMode) return;
-  if (mode === 'auto' && (!lastStatus || !lastStatus.can_auto || lastMotorState !== 'stopped')) return;
-  if (mode === 'manual' && (!lastStatus || lastStatus.mode_transition || lastMotorState !== 'stopped')) return;
+  if (mode === 'auto' && (!lastStatus || !lastStatus.encoder_valid || !lastStatus.can_auto || lastMotorState !== 'stopped')) return;
+  if (mode === 'manual' && (!lastStatus || !lastStatus.encoder_valid || lastStatus.mode_transition || lastMotorState !== 'stopped')) return;
   const previous = currentMode;
   modeRequestPending = true;
   showMode(mode);
@@ -678,7 +701,8 @@ const settingFields=[
 ];
 let settingsLoaded=false;
 function toggleSettings(){
-  const p=$('settingsPanel');p.hidden=!p.hidden;
+  const p=$('settingsModal');p.hidden=!p.hidden;
+  document.body.classList.toggle('modal-open',!p.hidden);
   if(!p.hidden && !settingsLoaded)loadSettings();
 }
 async function loadSettings(){
