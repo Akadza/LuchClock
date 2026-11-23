@@ -118,7 +118,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"LuchClock\",");
-  json += F("\"version\":\"1.5\",");
+  json += F("\"version\":\"1.6\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -148,6 +148,7 @@ void handleStatus() {
   json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
   json += F(",\"manual_pause_ms\":");json += String(motorManualPauseRemainingMs());
   json += F(",\"auto_fault\":");json += motorAutoFault()?"true":"false";
+  json += F(",\"fault_reason\":\"");json += motorFaultReason();json += F("\"");
   json += F(",\"uptime_seconds\":");
   json += String(millis() / 1000UL);
 
@@ -187,7 +188,7 @@ void handleStatus() {
   json += F(",\"can_stop\":");
   json += (manualMode && (motorState()==MOTOR_FORWARD || motorState()==MOTOR_REVERSE)) ? "true" : "false";
   json += F(",\"can_auto\":");
-  json += (encoderValid() && motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
+  json += (encoderValid() && motorManualPauseRemainingMs()==0 && motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
 
   json += F("}");
 
@@ -212,6 +213,9 @@ void handleMode() {
     server.send(409,"text/plain; charset=utf-8","Энкодер не подключён: доступен только режим Выключен");return;
   }
 
+  if (mode == "auto" && motorManualPauseRemainingMs()>0) {
+    server.send(409,"text/plain; charset=utf-8","Во время паузы после лимита автоматический режим запрещён");return;
+  }
   if (mode != "off" && motorAutoFault()) {
     server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
   }
@@ -380,13 +384,16 @@ void handleSettingsGet(){
   json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(runtimeSettings.encoderPollMs);sep=",";
   json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(runtimeSettings.encoderProbeMs);sep=",";
   json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(runtimeSettings.encoderStableSamples);sep=",";
+  json+=sep+String(char(34))+"ntpRequestSec"+char(34)+":"+String(runtimeSettings.ntpRequestSec);sep=",";
+  json+=",\\\"_saved\\\":";
+  json+=settingsPersistedMatches()?"true":"false";
   json+="}";
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
 }
 void handleSettingsPost(){
   // Защитные настройки меняем только при остановленном двигателе.
-  if(motorState()!=MOTOR_STOPPED || modeTransition){
+  if(currentMode=="auto" || motorState()!=MOTOR_STOPPED || modeTransition){
     server.send(409,"text/plain; charset=utf-8","Остановите двигатель и дождитесь окончания паузы");
     return;
   }
@@ -403,6 +410,7 @@ void handleSettingsPost(){
      !readSetting("encoderPollMs",next.encoderPollMs) ||
      !readSetting("encoderProbeMs",next.encoderProbeMs) ||
      !readSetting("encoderStableSamples",next.encoderStableSamples) ||
+     !readSetting("ntpRequestSec",next.ntpRequestSec) ||
      !settingsValidate(next)){
     server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
     return;
@@ -461,7 +469,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.5 started");
+  Serial.println("[WEB] HTTP server v1.6 started");
 }
 
 void webLoop() {
@@ -474,10 +482,20 @@ void webLoop() {
     webAddEvent("Энкодер недоступен: переход в Выключен");
   }
   const bool fault=motorAutoFault();
-  if(fault && !previousAutoFault)webAddEvent("КРИТИЧЕСКАЯ ОШИБКА: привод заблокирован (лимит или энкодер)");
+  if(fault && !previousAutoFault){
+    String reason=motorFaultReason();
+    webAddEvent(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
+      reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
+      "Критическая ошибка: привод заблокирован");
+  }
+  if(fault && currentMode!="off"){
+    motorStop();currentMode="off";manualMode=false;autoReady=false;
+    modeTransition=false;motorSetAutoMode(false);
+    webAddEvent("Аварийный переход в Выключен");
+  }
   previousAutoFault=fault;
   const unsigned long manualPause=motorManualPauseRemainingMs();
-  if(manualPause && !previousManualPause)webAddEvent("ПРЕДУПРЕЖДЕНИЕ: лимит ручной работы, пауза");
+  if(manualPause && !previousManualPause)webAddEvent("Достигнут лимит ручной работы: защитная пауза");
   previousManualPause=manualPause;
   if (modeTransition && motorState() != MOTOR_WAITING &&
       (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
