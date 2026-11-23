@@ -10,6 +10,7 @@
 #include "../motor/motor_controller.h"
 #include "../system_settings.h"
 #include "../encoder/encoder_reader.h"
+#include "../encoder/encoder_calibration.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
@@ -117,8 +118,8 @@ void handleStatus() {
   String json;
   json.reserve(560);
 
-  json += F("{\"device\":\"LuchClock\",");
-  json += F("\"version\":\"1.7\",");
+  json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
+  json += F("\"version\":\"1.8\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -142,7 +143,11 @@ void handleStatus() {
   json += F(",\"encoder_position\":");
   json += String(encoderValid() ? encoderPosition : -1);
   json += F(",\"encoder_minutes\":");
-  json += String(encoderMinutes());
+  json += String(calibrationSaved()?calibrationMinutes():encoderMinutes());
+  json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
+  json += F(",\"calibration_offset\":");json += String(calibrationOffset());
+  json += F(",\"calibration_pending\":");json += calibrationPending()?"true":"false";
+  json += F(",\"calibration_candidate\":");json += String(calibrationPendingOffset());
 
   json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
   json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
@@ -220,6 +225,7 @@ void handleMode() {
     server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
   }
   if (mode == "off") {
+    calibrationDiscard();
     motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
     motorSetAutoMode(false);
     webAddEvent("Режим выключен");
@@ -230,6 +236,7 @@ void handleMode() {
       return;
     }
     if (currentMode != "manual") {
+      calibrationDiscard();
       motorStop();
       manualMode = true;
       currentMode = "manual";
@@ -246,6 +253,7 @@ void handleMode() {
       return;
     }
     if (currentMode != "auto") {
+      calibrationDiscard();
       motorStop();
       manualMode = false;
       currentMode = "auto";
@@ -427,6 +435,46 @@ void handleSettingsPost(){
   webAddEvent(operation=="save"?"Настройки сохранены":"Настройки применены временно");
   server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
 }
+static bool calibrationAllowed(){
+  return currentMode=="manual" && motorState()==MOTOR_STOPPED &&
+    !modeTransition && !motorAutoFault() && encoderValid() && timeIsFresh();
+}
+static bool calibrationTimeAllowed(uint8_t& minute){
+  time_t now=time(nullptr);
+  struct tm local={};
+  if(!localtime_r(&now,&local))return false;
+  const uint32_t guard=runtimeSettings.calibrationGuardSec;
+  if((uint32_t)local.tm_sec<guard || (uint32_t)local.tm_sec>=60UL-guard)return false;
+  minute=(uint8_t)local.tm_min;
+  return true;
+}
+void handleCalibrationPreview(){
+  calibrationDiscard();
+  if(!calibrationAllowed()){
+    server.send(409,"text/plain; charset=utf-8","Нужен ручной режим, остановленный двигатель, исправный энкодер и актуальный NTP");return;
+  }
+  uint8_t minute=0,offset=0;
+  if(!calibrationTimeAllowed(minute)){
+    server.send(409,"text/plain; charset=utf-8","Слишком близко к смене минуты: повторите между 10-й и 49-й секундой");return;
+  }
+  const int16_t position=encoderPosition;
+  if(!calibrationPreview(minute,position,offset)){
+    server.send(409,"text/plain; charset=utf-8","Не удалось вычислить смещение");return;
+  }
+  String json=String("{\"offset\":")+String(offset)+",\"minute\":"+String(minute)+",\"position\":"+String(position)+"}";
+  server.send(200,"application/json",json);
+}
+void handleCalibrationSave(){
+  if(!calibrationAllowed() || !calibrationPending()){
+    server.send(409,"text/plain; charset=utf-8","Нет допустимой подготовленной калибровки");return;
+  }
+  // Guard is checked at preview; saving can occur in the next minute.
+  if(!calibrationCommit(0,encoderPosition)){
+    server.send(409,"text/plain; charset=utf-8","Положение энкодера изменилось или запись flash не удалась");return;
+  }
+  webAddEvent("Калибровка энкодера сохранена");
+  server.send(200,"application/json","{\"ok\":true}");
+}
 void handleFaultReset(){
   if(currentMode!="off" || !encoderValid() || !motorResetAutoFault()){
     server.send(409,"text/plain; charset=utf-8","Перейдите в Выключен, проверьте энкодер и наличие аварии");
@@ -456,6 +504,8 @@ void webSetup() {
   server.on("/api/settings", HTTP_GET, handleSettingsGet);
   server.on("/api/settings", HTTP_POST, handleSettingsPost);
   server.on("/api/reset-fault", HTTP_POST, handleFaultReset);
+  server.on("/api/calibration/preview", HTTP_POST, handleCalibrationPreview);
+  server.on("/api/calibration/save", HTTP_POST, handleCalibrationSave);
 
   server.onNotFound([]() {
     server.send(
@@ -467,7 +517,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.7 started");
+  Serial.println("[WEB] HTTP server v1.8 started");
 }
 
 void webLoop() {
