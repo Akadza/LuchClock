@@ -774,8 +774,9 @@ async function submitSettings(operation){
     if(!response.ok)throw Error(await response.text());
     appliedSettings=currentSettings();
     savedSettings=operation==='save';
-    text('settingsMessage',operation==='save'?'Сохранено во flash':'Применено временно');
     await refresh();loadLog();
+    await loadSettings();
+    text('settingsMessage',operation==='save'?'Сохранено во flash':'Применено временно');
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
   finally{settingsBusy=false;updateSettingsButtons();}
 }
