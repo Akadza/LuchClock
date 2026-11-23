@@ -17,3 +17,5 @@ unsigned long motorManualPauseRemainingMs();
 bool motorAutoFault();
 bool motorResetAutoFault();
 void motorSetAutoMode(bool enabled);
+
+const char* motorFaultReason();
