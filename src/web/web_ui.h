@@ -264,6 +264,7 @@ body.modal-open{overflow:hidden}
 .event-critical > div:first-child{color:#d78b8d}
 .event-symbol{display:inline-block;margin-right:9px;font-size:14px}
 #runBar{transition:width .16s linear}
+.mode-card{position:relative}
 .fault-actions[hidden]{display:none!important}
 .fault-actions{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;justify-content:center;z-index:2}
 .fault-reset{font-size:12px;padding:6px 12px;background:#4c3034;border-color:#865155;color:#f1d7d9}
@@ -311,7 +312,7 @@ body.modal-open{overflow:hidden}
   </div>
 </section>
 
-<section class="card">
+<section class="card mode-card">
   <div class="between section-title">
     <div class="mode-heading"><h2>Режим работы</h2><small id="modeHint">Автоматический · ожидание времени</small></div>
     <div class="mode">
