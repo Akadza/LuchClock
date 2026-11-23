@@ -1,75 +1,97 @@
 #include <Arduino.h>
-#include "motor_settings.h"
+#include "../system_settings.h"
+#include "../encoder/encoder_reader.h"
 #include "motor_controller.h"
 
-// Тестовый выход GPIO14: только Вперёд / Стоп.
-static MotorState state = MOTOR_STOPPED;
-static unsigned long waitStarted = 0;
-static unsigned long runStarted = 0;
+static MotorState state=MOTOR_STOPPED;
+static unsigned long waitStarted=0, runStarted=0, manualPausedAt=0;
+static bool manualPaused=false, autoMode=false, autoFault=false;
+static unsigned long lastRunMs=0;
+static unsigned long stopDelayMs=DEFAULT_MOTOR_STOP_DELAY_MS;
 
-void motorSetup() {
-  digitalWrite(MOTOR_TEST_OUTPUT_PIN, LOW);
-  pinMode(MOTOR_TEST_OUTPUT_PIN, OUTPUT);
-  state = MOTOR_STOPPED;
-  waitStarted = 0;
-  runStarted = 0;
+void motorSetup(){
+  digitalWrite(MOTOR_OUTPUT_PIN,LOW);
+  pinMode(MOTOR_OUTPUT_PIN,OUTPUT);
+  state=MOTOR_STOPPED; autoMode=false; autoFault=false; manualPaused=false;
+  waitStarted=runStarted=lastRunMs=0;
 }
-MotorState motorState() { return state; }
-const char* motorStateText() {
-  switch (state) {
-    case MOTOR_FORWARD: return "forward";
-    case MOTOR_REVERSE: return "reverse";
-    case MOTOR_WAITING: return "waiting";
-    case MOTOR_FAULT: return "fault";
-    default: return "stopped";
-  }
-}
-unsigned long motorWaitRemainingMs() {
-  if (state != MOTOR_WAITING) return 0;
-  const unsigned long elapsed = millis() - waitStarted;
-  return elapsed >= MOTOR_STOP_DELAY_MS ? 0 : MOTOR_STOP_DELAY_MS - elapsed;
-}
-bool motorCanForward() { return state == MOTOR_STOPPED || state == MOTOR_FORWARD; }
-bool motorCanReverse() { return false; }
-bool motorCanStop() { return true; }
-void motorStop() {
-  digitalWrite(MOTOR_TEST_OUTPUT_PIN, LOW);
-  if (state == MOTOR_FORWARD || state == MOTOR_REVERSE) {
-    // Отключить движение и выдержать паузу, даже при повторном STOP.
-    state = MOTOR_WAITING;
-    waitStarted = millis();
-    Serial.println("[MOTOR TEST] STOP; cooldown started");
-  } else if (state == MOTOR_STOPPED) {
-    Serial.println("[MOTOR TEST] Already stopped");
-  }
-  // В WAITING повторный STOP не сбрасывает таймер.
-  // В FAULT команда STOP не снимает аварийную блокировку.
-}
-void motorLoop() {
-  if (state == MOTOR_WAITING && millis() - waitStarted >= MOTOR_STOP_DELAY_MS) {
-    state = MOTOR_STOPPED;
-    Serial.println("[MOTOR TEST] Cooldown complete; stopped");
-  }
-  if ((state == MOTOR_FORWARD || state == MOTOR_REVERSE) &&
-      millis() - runStarted >= MOTOR_MAX_RUN_MS) {
-    digitalWrite(MOTOR_TEST_OUTPUT_PIN, LOW);
-    state = MOTOR_FAULT;
-    Serial.println("[MOTOR TEST] FAULT: maximum runtime exceeded");
+MotorState motorState(){return state;}
+const char* motorStateText(){
+  switch(state){
+    case MOTOR_FORWARD:return "forward";
+    case MOTOR_REVERSE:return "reverse";
+    case MOTOR_WAITING:return "waiting";
+    case MOTOR_FAULT:return "fault";
+    default:return "stopped";
   }
 }
-bool motorCommand(const String& action) {
-  if (action == "stop") {
-    motorStop();
-    return true;
+unsigned long motorRunElapsedMs(){return state==MOTOR_FORWARD ? millis()-runStarted : 0;}
+unsigned long motorManualPauseRemainingMs(){
+  if(!manualPaused)return 0;
+  const unsigned long duration=runtimeSettings.manualPauseSec*1000UL;
+  const unsigned long elapsed=millis()-manualPausedAt;
+  return elapsed>=duration?0:duration-elapsed;
+}
+unsigned long motorWaitRemainingMs(){
+  if(state!=MOTOR_WAITING)return 0;
+  unsigned long elapsed=millis()-waitStarted;
+  return elapsed>=stopDelayMs?0:stopDelayMs-elapsed;
+}
+bool motorAutoFault(){return autoFault;}
+void motorSetAutoMode(bool enabled){autoMode=enabled;}
+bool motorResetAutoFault(){
+  if(!autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
+  autoFault=false;
+  if(state==MOTOR_FAULT)state=MOTOR_STOPPED;
+  Serial.println(F("[MOTOR] Auto fault reset (no restart)"));
+  return true;
+}
+bool motorCanForward(){
+  return !autoMode && !autoFault && state==MOTOR_STOPPED &&
+    motorManualPauseRemainingMs()==0 && encoderValid();
+}
+bool motorCanReverse(){return false;}
+bool motorCanStop(){return true;}
+void motorStop(){
+  digitalWrite(MOTOR_OUTPUT_PIN,LOW);
+  if(state==MOTOR_FORWARD || state==MOTOR_REVERSE){
+    lastRunMs=millis()-runStarted;
+    state=MOTOR_WAITING;waitStarted=millis();stopDelayMs=DEFAULT_MOTOR_STOP_DELAY_MS;
+    Serial.println(F("[MOTOR] STOP"));
   }
-  if (action == "forward" && motorCanForward()) {
-    if (state == MOTOR_STOPPED) runStarted = millis();
-    state = MOTOR_FORWARD;
-    digitalWrite(MOTOR_TEST_OUTPUT_PIN, HIGH);
-  } else {
-    return false; // Запрет на реверс без STOP и выдержки.
+}
+void motorLoop(){
+  if(state==MOTOR_FORWARD && !encoderValid()){
+    digitalWrite(MOTOR_OUTPUT_PIN,LOW);
+    lastRunMs=millis()-runStarted;
+    state=MOTOR_FAULT;
+    autoFault=true;
+    Serial.println(F("[MOTOR] CRITICAL: encoder lost during movement"));
   }
-  Serial.print("[MOTOR TEST] ");
-  Serial.println(motorStateText());
+  if(state==MOTOR_FORWARD){
+    const unsigned long limit=(autoMode?runtimeSettings.autoLimitSec:runtimeSettings.manualLimitSec)*1000UL;
+    if(millis()-runStarted>=limit){
+      digitalWrite(MOTOR_OUTPUT_PIN,LOW);
+      lastRunMs=millis()-runStarted;
+      if(autoMode){
+        state=MOTOR_FAULT;autoFault=true;
+        Serial.println(F("[MOTOR] CRITICAL: automatic runtime limit"));
+      }else{
+        state=MOTOR_WAITING;waitStarted=millis();
+        stopDelayMs=DEFAULT_MOTOR_STOP_DELAY_MS;
+        manualPaused=true;manualPausedAt=millis();
+        Serial.println(F("[MOTOR] WARNING: manual runtime limit, 15s pause"));
+      }
+    }
+  }
+  if(state==MOTOR_WAITING && millis()-waitStarted>=stopDelayMs)state=MOTOR_STOPPED;
+  if(manualPaused && motorManualPauseRemainingMs()==0)manualPaused=false;
+}
+bool motorCommand(const String& action){
+  if(action=="stop"){motorStop();return true;}
+  if(action!="forward" || !motorCanForward())return false;
+  runStarted=millis();lastRunMs=0;state=MOTOR_FORWARD;
+  digitalWrite(MOTOR_OUTPUT_PIN,HIGH);
+  Serial.println(F("[MOTOR] FORWARD"));
   return true;
 }
