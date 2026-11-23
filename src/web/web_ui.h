@@ -661,6 +661,61 @@ async function loadLog() {
   }
 }
 
+
+const settingFields=[
+ ['manualLimitSec','Лимит ручного режима, сек',1,900],
+ ['autoLimitSec','Лимит авторежима, сек',1,900],
+ ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
+ ['calibrationGuardSec','Защита границы минуты, сек',0,29],
+ ['noMotionWarnSec','Предупреждение без движения, сек',1,900],
+ ['autoStepMin','Шаг синхронизации, мин',1,10]
+];
+let settingsLoaded=false;
+function toggleSettings(){
+  const p=$('settingsPanel');p.hidden=!p.hidden;
+  if(!p.hidden && !settingsLoaded)loadSettings();
+}
+async function loadSettings(){
+  try{
+    const response=await fetch('/api/settings',{cache:'no-store'});
+    if(!response.ok)throw Error('HTTP '+response.status);
+    const data=await response.json();
+    const root=$('settingsFields');root.replaceChildren();
+    for(const [key,label,min,max] of settingFields){
+      const item=document.createElement('label');item.className='diag-item';
+      const title=document.createElement('div');title.className='label';title.textContent=label;
+      const input=document.createElement('input');input.type='number';input.id='setting_'+key;
+      input.min=min;input.max=max;input.step=1;input.value=data[key];
+      input.style.cssText='width:100%;background:#111720;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px';
+      item.append(title,input);root.appendChild(item);
+    }
+    settingsLoaded=true;text('settingsMessage','Загружено');
+  }catch(e){text('settingsMessage','Ошибка: '+e.message)}
+}
+async function submitSettings(operation){
+  if(!settingsLoaded)return;
+  const args=new URLSearchParams();
+  for(const [key,label,min,max] of settingFields){
+    const raw=$('setting_'+key).value;
+    const n=Number(raw);
+    if(!/^\\d+$/.test(raw)||!Number.isInteger(n)||n<min||n>max){
+      text('settingsMessage','Проверьте: '+label);return;
+    }
+    args.set(key,raw);
+  }
+  args.set('operation',operation);
+  try{
+    const response=await fetch('/api/settings',{method:'POST',body:args});
+    if(!response.ok)throw Error(await response.text());
+    text('settingsMessage',operation==='save'?'Сохранено во flash':'Применено временно');
+    await refresh();loadLog();
+  }catch(e){text('settingsMessage','Ошибка: '+e.message)}
+}
+async function resetFault(){
+  try{await post('/api/reset-fault');await refresh();loadLog()}
+  catch(e){alert(e.message)}
+}
+
 refresh();
 loadLog();
 setInterval(refresh, 250);
