@@ -698,7 +698,7 @@ async function submitSettings(operation){
   for(const [key,label,min,max] of settingFields){
     const raw=$('setting_'+key).value;
     const n=Number(raw);
-    if(!/^\\d+$/.test(raw)||!Number.isInteger(n)||n<min||n>max){
+    if(!/^\d+$/.test(raw)||!Number.isInteger(n)||n<min||n>max){
       text('settingsMessage','Проверьте: '+label);return;
     }
     args.set(key,raw);
