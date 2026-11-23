@@ -8,11 +8,12 @@
 #include "web_server.h"
 #include "web_ui.h"
 #include "../motor/motor_controller.h"
-#include "../motor/motor_settings.h"
+#include "../system_settings.h"
 #include "../encoder/encoder_reader.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
+static String currentMode = "off";
 static bool manualMode = false;
 static unsigned long modeChangedAt = 0;
 static bool modeTransition = false;
@@ -21,7 +22,7 @@ static bool autoReady = false;
 static unsigned long modeWaitRemainingMs() {
   if (!modeTransition) return 0;
   unsigned long elapsed = millis() - modeChangedAt;
-  return elapsed >= MOTOR_MODE_CHANGE_DELAY_MS ? 0 : MOTOR_MODE_CHANGE_DELAY_MS - elapsed;
+  return elapsed >= DEFAULT_MODE_DELAY_MS ? 0 : MOTOR_MODE_CHANGE_DELAY_MS - elapsed;
 }
 static bool modeIsReady() {
   return !modeTransition && motorState() == MOTOR_STOPPED;
@@ -124,7 +125,7 @@ void handleStatus() {
   json += WiFi.localIP().toString();
 
   json += F("\",\"mode\":\"");
-  json += manualMode ? "manual" : "auto";
+  json += currentMode;
 
   json += F("\",\"simulation\":false");
 
@@ -141,7 +142,11 @@ void handleStatus() {
   json += F(",\"encoder_minutes\":");
   json += String(encoderMinutes());
 
-  json += F(",\"uptime_seconds\":");
+  json += F(",\\"motor_run_ms\\":");json += String(motorRunElapsedMs());
+  json += F(",\\"motor_limit_ms\\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
+  json += F(",\\"manual_pause_ms\\":");json += String(motorManualPauseRemainingMs());
+  json += F(",\\"auto_fault\\":");json += motorAutoFault()?"true":"false";
+  json += F(",\\"uptime_seconds\\":");
   json += String(millis() / 1000UL);
 
   json += F(",\"ntp_synced\":");
@@ -168,11 +173,11 @@ void handleStatus() {
   json += F(",\"mode_wait_total_ms\":");
   json += String(MOTOR_MODE_CHANGE_DELAY_MS);
   json += F(",\"motor_wait_total_ms\":");
-  json += String(MOTOR_STOP_DELAY_MS);
+  json += String(DEFAULT_MOTOR_STOP_DELAY_MS);
   json += F(",\"mode_wait_ms\":");
   json += String(modeWaitRemainingMs());
   json += F(",\"auto_ready\":");
-  json += (!manualMode && autoReady && modeIsReady()) ? "true" : "false";
+  json += (currentMode=="auto" && autoReady && modeIsReady() && !motorAutoFault()) ? "true" : "false";
   json += F(",\"can_forward\":");
   json += (manualMode && modeIsReady() && motorCanForward()) ? "true" : "false";
   json += F(",\"can_reverse\":");
@@ -201,15 +206,21 @@ void handleMode() {
 
   String mode = server.arg("value");
 
-  if (mode == "manual") {
+  if (mode == "off") {
+    motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
+    motorSetAutoMode(false);
+    webAddEvent("Режим выключен");
+  } else if (mode == "manual") {
     // Запрет переключения во время защитной паузы действует и на API.
     if (!manualMode && (modeTransition || motorState() != MOTOR_STOPPED)) {
       server.send(409, "text/plain; charset=utf-8", "Дождитесь завершения защитной паузы и остановки привода");
       return;
     }
-    if (!manualMode) {
+    if (currentMode != "manual") {
       motorStop();
       manualMode = true;
+      currentMode = "manual";
+      motorSetAutoMode(false);
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
@@ -224,6 +235,8 @@ void handleMode() {
     if (manualMode) {
       motorStop();
       manualMode = false;
+      currentMode = "auto";
+      motorSetAutoMode(true);
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
@@ -275,7 +288,7 @@ void handleCommand() {
     return;
   }
 
-  if (action != "stop" && !modeIsReady()) {
+  if (action != "stop" && (!modeIsReady() || !encoderValid())) {
     server.send(409, "text/plain", "Mode transition or motor cooldown active");
     return;
   }
@@ -333,6 +346,8 @@ void handleEvents() {
 
 void webSetup() {
   manualMode = false;
+  currentMode = "off";
+  motorSetAutoMode(false);
   modeTransition = false;
   autoReady = false;
   eventCount = 0;
@@ -344,6 +359,9 @@ void webSetup() {
   server.on("/api/mode", HTTP_POST, handleMode);
   server.on("/api/command", HTTP_POST, handleCommand);
   server.on("/api/events", HTTP_GET, handleEvents);
+  server.on("/api/settings", HTTP_GET, handleSettingsGet);
+  server.on("/api/settings", HTTP_POST, handleSettingsPost);
+  server.on("/api/reset-fault", HTTP_POST, handleFaultReset);
 
   server.onNotFound([]() {
     server.send(
@@ -355,7 +373,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v0.3 started");
+  Serial.println("[WEB] HTTP server v1.3 started");
 }
 
 void webLoop() {
