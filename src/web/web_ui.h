@@ -265,8 +265,8 @@ body.modal-open{overflow:hidden}
 .event-symbol{display:inline-block;margin-right:9px;font-size:14px}
 #runBar{transition:width .16s linear}
 .fault-actions[hidden]{display:none!important}
-.fault-actions{display:flex;justify-content:center;margin-top:10px}
-.fault-reset{background:#4c3034;border-color:#865155;color:#f1d7d9}
+.fault-actions{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;justify-content:center;z-index:2}
+.fault-reset{font-size:12px;padding:6px 12px;background:#4c3034;border-color:#865155;color:#f1d7d9}
 .fault-reset:hover{background:#624044}
 </style>
 </head>
