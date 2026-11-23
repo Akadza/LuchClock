@@ -459,7 +459,7 @@ void handleCalibrationPreview(){
     server.send(409,"text/plain; charset=utf-8","Слишком близко к смене минуты: повторите между 10-й и 49-й секундой");return;
   }
   const int16_t position=encoderPosition;
-  if(!calibrationPreview(minute,position,offset)){
+  if(!calibrationPreview((uint32_t)(time(nullptr)/60),position,offset)){
     server.send(409,"text/plain; charset=utf-8","Не удалось вычислить смещение");return;
   }
   String json=String("{\"offset\":")+String(offset)+",\"minute\":"+String(minute)+",\"position\":"+String(position)+"}";
@@ -469,9 +469,9 @@ void handleCalibrationSave(){
   if(!calibrationAllowed() || !calibrationPending()){
     server.send(409,"text/plain; charset=utf-8","Нет допустимой подготовленной калибровки");return;
   }
-  // Guard is checked at preview; saving can occur in the next minute.
-  if(!calibrationCommit(0,encoderPosition)){
-    server.send(409,"text/plain; charset=utf-8","Положение энкодера изменилось или запись flash не удалась");return;
+  // Сохранение разрешено только в ту же минуту, что и расчёт.
+  if(!calibrationCommit((uint32_t)(time(nullptr)/60),encoderPosition)){
+    server.send(409,"text/plain; charset=utf-8","Калибровка устарела, энкодер повернулся или запись flash не удалась");return;
   }
   webAddEvent("Калибровка энкодера сохранена");
   server.send(200,"application/json","{\"ok\":true}");
