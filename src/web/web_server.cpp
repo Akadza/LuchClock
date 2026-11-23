@@ -18,6 +18,8 @@ static bool manualMode = false;
 static unsigned long modeChangedAt = 0;
 static bool modeTransition = false;
 static bool autoReady = false;
+static bool previousAutoFault = false;
+static unsigned long previousManualPause = 0;
 
 static unsigned long modeWaitRemainingMs() {
   if (!modeTransition) return 0;
@@ -414,6 +416,8 @@ void webSetup() {
   modeTransition = false;
   autoReady = false;
   eventCount = 0;
+  previousAutoFault=false;
+  previousManualPause=0;
 
   webAddEvent("Контроллер запущен");
 
@@ -440,6 +444,12 @@ void webSetup() {
 }
 
 void webLoop() {
+  const bool fault=motorAutoFault();
+  if(fault && !previousAutoFault)webAddEvent("КРИТИЧЕСКАЯ ОШИБКА: привод заблокирован (лимит или энкодер)");
+  previousAutoFault=fault;
+  const unsigned long manualPause=motorManualPauseRemainingMs();
+  if(manualPause && !previousManualPause)webAddEvent("ПРЕДУПРЕЖДЕНИЕ: лимит ручной работы, пауза");
+  previousManualPause=manualPause;
   if (modeTransition && motorState() != MOTOR_WAITING &&
       (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
     modeTransition = false;
