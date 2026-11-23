@@ -1,4 +1,5 @@
 #include "encoder_reader.h"
+#include "../system_settings.h"
 #include <Wire.h>
 #include <pgmspace.h>
 
@@ -51,13 +52,13 @@ void encoderSetup() {
 void encoderLoop() {
   const unsigned long now = millis();
   if (!encoderAddress) {
-    if (now - encoderLastProbe >= 2000) {
+    if (now - encoderLastProbe >= runtimeSettings.encoderProbeMs) {
       encoderLastProbe = now;
       encoderFindDevice();
     }
     return;
   }
-  if (now - encoderLastRead < 25) return;
+  if (now - encoderLastRead < runtimeSettings.encoderPollMs) return;
   encoderLastRead = now;
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
     encoderAddress = 0;
@@ -71,8 +72,8 @@ void encoderLoop() {
     encoderStableCount = 1;
     return;
   }
-  if (encoderStableCount < 3) ++encoderStableCount;
-  if (encoderStableCount < 2) return;
+  if (encoderStableCount < runtimeSettings.encoderStableSamples) ++encoderStableCount;
+  if (encoderStableCount < runtimeSettings.encoderStableSamples) return;
   encoderRaw = value;
   encoderPosition = -1;
   for (int i = 0; i < 128; ++i) {
