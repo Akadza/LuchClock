@@ -171,7 +171,7 @@ void handleStatus() {
   json += F(",\"mode_transition\":");
   json += modeTransition ? "true" : "false";
   json += F(",\"mode_wait_total_ms\":");
-  json += String(MOTOR_MODE_CHANGE_DELAY_MS);
+  json += String(DEFAULT_MODE_DELAY_MS);
   json += F(",\"motor_wait_total_ms\":");
   json += String(DEFAULT_MOTOR_STOP_DELAY_MS);
   json += F(",\"mode_wait_ms\":");
@@ -205,6 +205,9 @@ void handleMode() {
 
   String mode = server.arg("value");
 
+  if (mode != "off" && motorAutoFault()) {
+    server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
+  }
   if (mode == "off") {
     motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
     motorSetAutoMode(false);
@@ -227,7 +230,7 @@ void handleMode() {
       Serial.println("[MODE] Manual");
     }
   } else if (mode == "auto") {
-    if (manualMode && (motorState() != MOTOR_STOPPED || modeTransition)) {
+    if (currentMode != "auto" && (motorState() != MOTOR_STOPPED || modeTransition)) {
       server.send(409, "text/plain; charset=utf-8", "Сначала остановите привод и дождитесь завершения паузы");
       return;
     }
