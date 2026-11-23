@@ -257,6 +257,13 @@ body.modal-open{overflow:hidden}
 .settings-footer>div{display:flex;gap:8px}
 #settingsFields input{max-width:100%}
 @media(max-width:600px){.settings-overlay{padding:8px}.settings-dialog{max-height:96dvh}.settings-heading{flex-direction:row}.settings-scroll{padding:12px}.settings-footer{padding:12px}}
+/* Subtle severity colors and settings actions. */
+.save-button:not(:disabled){background:#284b3b;border-color:#44745a;color:#d6f2e2}
+.save-button:hover:not(:disabled){background:#315a46}
+.event-warning > div:first-child{color:#d8b574}
+.event-critical > div:first-child{color:#d78b8d}
+.event-symbol{display:inline-block;margin-right:9px;font-size:14px}
+#runBar{transition:width .16s linear}
 </style>
 </head>
 <body>
@@ -362,7 +369,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.5 · Тестовый режим ·
+  LuchClock v1.6 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -370,7 +377,7 @@ body.modal-open{overflow:hidden}
  <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
   <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div></div></div>
-  <div class="settings-footer"><small id="settingsMessage"></small><div><button onclick="submitSettings('apply')">Применить</button> <button onclick="submitSettings('save')">Сохранить</button></div></div>
+  <div class="settings-footer"><small id="settingsMessage"></small><div><button id="applySettingsBtn" onclick="submitSettings('apply')" disabled>Применить</button> <button id="saveSettingsBtn" class="save-button" onclick="submitSettings('save')" disabled>Сохранить</button></div></div>
  </section>
 </div>
 
@@ -458,6 +465,7 @@ function renderStatus(s) {
   text('uptime', formatUptime(s.uptime_seconds));
   lastStatus = s;
   lastStatusAt = Date.now();
+  updateSettingsButtons();
   statusKnown = true;
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Остановка · защитная пауза',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
@@ -670,10 +678,18 @@ async function loadLog() {
       return;
     }
     for (const event of data.events) {
+      const warning=/лимит ручной работы|защитная пауза/i.test(event.message);
+      const critical=/аварийн|критическ|потеря связи с энкодером|не фиксирует движение/i.test(event.message);
       const item = document.createElement('div');
       item.className = 'event';
       const title = document.createElement('div');
       title.textContent = event.message;
+      if(warning||critical){
+        item.classList.add(critical?'event-critical':'event-warning');
+        const mark=document.createElement('span');
+        mark.className='event-symbol';mark.textContent=critical?'✖':'⚠';
+        title.prepend(mark);
+      }
       const when = document.createElement('div');
       when.className = 'when';
       when.textContent = event.time;
@@ -690,17 +706,29 @@ const settingFields=[
  ['manualLimitSec','Лимит ручного режима, сек',1,900],
  ['autoLimitSec','Лимит авторежима, сек',1,900],
  ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
- ['calibrationGuardSec','Защита границы минуты, сек',0,29],
- ['noMotionWarnSec','Предупреждение без движения, сек',1,900],
+ ['calibrationGuardSec','Запрет автокалибровки до и после смены минуты, сек',0,29],
+ ['noMotionWarnSec','Аварийная остановка без движения энкодера, сек',1,900],
  ['autoStepMin','Шаг синхронизации, мин',1,10],
  ['wifiReconnectMs','Повтор Wi-Fi, мс',1000,300000],
  ['wifiDiagnosticMs','Диагностика Wi-Fi, мс',1000,300000],
  ['ntpStaleSec','Устаревание NTP, сек',60,86400],
  ['encoderPollMs','Опрос энкодера, мс',5,100],
  ['encoderProbeMs','Повтор поиска PCF8574, мс',250,10000],
- ['encoderStableSamples','Подтверждающих чтений энкодера',2,5]
+ ['encoderStableSamples','Подтверждающих чтений энкодера',2,5],
+ ['ntpRequestSec','Интервал запроса времени NTP, сек',60,86400]
 ];
 let settingsLoaded=false;
+let appliedSettings=null;
+let savedSettings=false;
+let settingsBusy=false;
+function currentSettings(){const result={};for(const [key] of settingFields)result[key]=Number($('setting_'+key).value);return result;}
+function updateSettingsButtons(){
+  if(!settingsLoaded)return;
+  const changed=JSON.stringify(currentSettings())!==JSON.stringify(appliedSettings);
+  const blocked=settingsBusy || !lastStatus || lastStatus.mode==='auto' || lastStatus.motor_state!=='stopped' || !!lastStatus.mode_transition;
+  $('applySettingsBtn').disabled=blocked || !changed;
+  $('saveSettingsBtn').disabled=blocked || (!changed && savedSettings);
+}
 function toggleSettings(){
   const p=$('settingsModal');p.hidden=!p.hidden;
   document.body.classList.toggle('modal-open',!p.hidden);
@@ -718,13 +746,18 @@ async function loadSettings(){
       const input=document.createElement('input');input.type='number';input.id='setting_'+key;
       input.min=min;input.max=max;input.step=1;input.value=data[key];
       input.style.cssText='width:100%;background:#111720;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px';
+      input.addEventListener('input',updateSettingsButtons);
       item.append(title,input);root.appendChild(item);
     }
-    settingsLoaded=true;text('settingsMessage','Загружено');
+    settingsLoaded=true;appliedSettings=currentSettings();savedSettings=!!data._saved;
+    text('settingsMessage',savedSettings?'Настройки сохранены':'Есть настройки, не сохранённые во flash');
+    updateSettingsButtons();
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
 }
 async function submitSettings(operation){
-  if(!settingsLoaded)return;
+  if(!settingsLoaded || settingsBusy)return;
+  updateSettingsButtons();
+  if($(operation==='save'?'saveSettingsBtn':'applySettingsBtn').disabled)return;
   const args=new URLSearchParams();
   for(const [key,label,min,max] of settingFields){
     const raw=$('setting_'+key).value;
@@ -735,12 +768,16 @@ async function submitSettings(operation){
     args.set(key,raw);
   }
   args.set('operation',operation);
+  settingsBusy=true;updateSettingsButtons();
   try{
     const response=await fetch('/api/settings',{method:'POST',body:args});
     if(!response.ok)throw Error(await response.text());
+    appliedSettings=currentSettings();
+    savedSettings=operation==='save';
     text('settingsMessage',operation==='save'?'Сохранено во flash':'Применено временно');
     await refresh();loadLog();
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
+  finally{settingsBusy=false;updateSettingsButtons();}
 }
 async function resetFault(){
   try{await post('/api/reset-fault');await refresh();loadLog()}
