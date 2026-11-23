@@ -468,8 +468,10 @@ function renderStatus(s) {
   text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · позиция: ' + s.encoder_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
+  const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
   lastStatus = s;
   lastStatusAt = Date.now();
+  if(newlyFaulted)loadLog();
   updateSettingsButtons();
   statusKnown = true;
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Остановка · защитная пауза',fault:'Ошибка привода'};
@@ -725,6 +727,7 @@ let settingsLoaded=false;
 let appliedSettings=null;
 let savedSettings=false;
 let settingsBusy=false;
+let settingsOpenGeneration=0;
 function currentSettings(){const result={};for(const [key] of settingFields)result[key]=Number($('setting_'+key).value);return result;}
 function updateSettingsButtons(){
   if(!settingsLoaded)return;
@@ -735,6 +738,7 @@ function updateSettingsButtons(){
 }
 function toggleSettings(){
   const p=$('settingsModal');
+  settingsOpenGeneration++;
   if(p.hidden){
     p.hidden=false;document.body.classList.add('modal-open');
     settingsLoaded=false;
@@ -748,10 +752,12 @@ function toggleSettings(){
   }
 }
 async function loadSettings(){
+  const generation=settingsOpenGeneration;
   try{
     const response=await fetch('/api/settings',{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const data=await response.json();
+    if(generation!==settingsOpenGeneration || $('settingsModal').hidden)return;
     const root=$('settingsFields');root.replaceChildren();
     for(const [key,label,min,max] of settingFields){
       const item=document.createElement('label');item.className='diag-item';
