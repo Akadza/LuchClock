@@ -13,6 +13,7 @@ static bool everSynchronized = false;
 static bool syncStale = false;
 
 static unsigned long lastSyncMillis = 0;
+static unsigned long lastNtpRequestMillis = 0;
 static time_t lastSyncEpoch = 0;
 
 // Вызывается ядром ESP8266 после установки времени.
@@ -27,6 +28,7 @@ void timeSetup() {
 
   settimeofday_cb(onTimeSet);
 
+  lastNtpRequestMillis=millis();
   configTime(
     TIMEZONE_TZ,
     NTP_SERVER_1,
@@ -90,6 +92,13 @@ String timeLastSyncString() {
 }
 
 TimeEvent timeLoop() {
+  // configTime reconfigures SNTP; do not call more frequently than requested.
+  if(WiFi.status()==WL_CONNECTED &&
+     millis()-lastNtpRequestMillis>=runtimeSettings.ntpRequestSec*1000UL){
+    lastNtpRequestMillis=millis();
+    configTime(TIMEZONE_TZ,NTP_SERVER_1,NTP_SERVER_2);
+    Serial.println(F("[NTP] Scheduled synchronization request"));
+  }
   if (ntpCallbackPending) {
     ntpCallbackPending = false;
 
