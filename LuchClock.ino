@@ -14,7 +14,7 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v1.3");
+  Serial.println("LuchClock v1.4");
   Serial.println("==================");
 
   motorSetup(); // Сначала гарантируем LOW на D5.
