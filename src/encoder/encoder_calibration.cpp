@@ -18,6 +18,8 @@ static bool pending=false;
 static uint8_t candidateOffset=0;
 static uint8_t candidateMinute=0;
 static int16_t candidatePosition=-1;
+static unsigned long previewAt=0;
+static_assert(sizeof(CalibrationRecord)+CAL_EEPROM_OFFSET<=SETTINGS_EEPROM_BYTES,"Calibration exceeds EEPROM");
 
 void calibrationSetup(){
   CalibrationRecord r={};
@@ -46,11 +48,12 @@ bool calibrationPreview(uint8_t minute,int16_t rawPosition,uint8_t& offset){
   candidateMinute=minute;
   candidatePosition=rawPosition;
   pending=true;
+  previewAt=millis();
   offset=candidateOffset;
   return true;
 }
 bool calibrationCommit(uint8_t minute,int16_t rawPosition){
-  if(!pending || rawPosition!=candidatePosition)return false;
+  if(!pending || rawPosition!=candidatePosition || millis()-previewAt>60000UL)return false;
   CalibrationRecord r={CAL_MAGIC,1,candidateOffset,(uint8_t)(candidateOffset ^ 0xA5),0};
   EEPROM.put(CAL_EEPROM_OFFSET,r);
   if(!EEPROM.commit())return false;
