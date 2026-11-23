@@ -119,7 +119,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.8\",");
+  json += F("\"version\":\"1.9\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -518,7 +518,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.8 started");
+  Serial.println("[WEB] HTTP server v1.9 started");
 }
 
 void webLoop() {
