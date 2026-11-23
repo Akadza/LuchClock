@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "config.h"
+#include "src/system_settings.h"
 #include "src/network/wifi_manager.h"
 #include "src/network/time_manager.h"
 #include "src/web/web_server.h"
@@ -13,9 +14,10 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v0.3");
+  Serial.println("LuchClock v1.3");
   Serial.println("==================");
 
+  settingsSetup();
   motorSetup(); // Инициализируем безопасный LOW до Wi-Fi.
   encoderSetup();
   wifiSetup();
