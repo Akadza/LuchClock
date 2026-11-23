@@ -8,12 +8,16 @@ static unsigned long waitStarted=0, runStarted=0, manualPausedAt=0;
 static bool manualPaused=false, autoMode=false, autoFault=false;
 static unsigned long lastRunMs=0;
 static unsigned long stopDelayMs=DEFAULT_MOTOR_STOP_DELAY_MS;
+static int16_t lastPosition=-1;
+static unsigned long lastMovementAt=0;
+static const char* faultReason="";
 
 void motorSetup(){
   digitalWrite(MOTOR_OUTPUT_PIN,LOW);
   pinMode(MOTOR_OUTPUT_PIN,OUTPUT);
   state=MOTOR_STOPPED; autoMode=false; autoFault=false; manualPaused=false;
   waitStarted=runStarted=lastRunMs=0;
+  lastPosition=-1;lastMovementAt=0;faultReason="";
 }
 MotorState motorState(){return state;}
 const char* motorStateText(){
@@ -38,10 +42,11 @@ unsigned long motorWaitRemainingMs(){
   return elapsed>=stopDelayMs?0:stopDelayMs-elapsed;
 }
 bool motorAutoFault(){return autoFault;}
+const char* motorFaultReason(){return faultReason;}
 void motorSetAutoMode(bool enabled){autoMode=enabled;}
 bool motorResetAutoFault(){
   if(!autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
-  autoFault=false;
+  autoFault=false;faultReason="";
   if(state==MOTOR_FAULT)state=MOTOR_STOPPED;
   Serial.println(F("[MOTOR] Auto fault reset (no restart)"));
   return true;
@@ -65,8 +70,19 @@ void motorLoop(){
     digitalWrite(MOTOR_OUTPUT_PIN,LOW);
     lastRunMs=millis()-runStarted;
     state=MOTOR_FAULT;
-    autoFault=true;
+    autoFault=true;faultReason="encoder_lost";
     Serial.println(F("[MOTOR] CRITICAL: encoder lost during movement"));
+  }
+  if(state==MOTOR_FORWARD){
+    // Encoder movement must be observed during motor operation.
+    if(encoderPosition!=lastPosition){
+      lastPosition=encoderPosition;lastMovementAt=millis();
+    }else if(millis()-lastMovementAt>=runtimeSettings.noMotionWarnSec*1000UL){
+      digitalWrite(MOTOR_OUTPUT_PIN,LOW);
+      lastRunMs=millis()-runStarted;
+      state=MOTOR_FAULT;autoFault=true;faultReason="no_motion";
+      Serial.println(F("[MOTOR] CRITICAL: no encoder movement"));
+    }
   }
   if(state==MOTOR_FORWARD){
     const unsigned long limit=(autoMode?runtimeSettings.autoLimitSec:runtimeSettings.manualLimitSec)*1000UL;
@@ -74,7 +90,7 @@ void motorLoop(){
       digitalWrite(MOTOR_OUTPUT_PIN,LOW);
       lastRunMs=millis()-runStarted;
       if(autoMode){
-        state=MOTOR_FAULT;autoFault=true;
+        state=MOTOR_FAULT;autoFault=true;faultReason="auto_limit";
         Serial.println(F("[MOTOR] CRITICAL: automatic runtime limit"));
       }else{
         state=MOTOR_WAITING;waitStarted=millis();
@@ -91,6 +107,7 @@ bool motorCommand(const String& action){
   if(action=="stop"){motorStop();return true;}
   if(action!="forward" || !motorCanForward())return false;
   runStarted=millis();lastRunMs=0;state=MOTOR_FORWARD;
+  lastPosition=encoderPosition;lastMovementAt=millis();
   digitalWrite(MOTOR_OUTPUT_PIN,HIGH);
   Serial.println(F("[MOTOR] FORWARD"));
   return true;
