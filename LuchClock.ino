@@ -7,6 +7,7 @@
 #include "src/web/web_server.h"
 #include "src/motor/motor_controller.h"
 #include "src/encoder/encoder_reader.h"
+#include "src/encoder/encoder_calibration.h"
 
 void setup() {
   Serial.begin(115200);
@@ -14,16 +15,18 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v1.7");
+  Serial.println("LuchClock v1.8");
   Serial.println("==================");
 
   motorSetup(); // Сначала гарантируем LOW на D5.
-  settingsSetup(); // Инициализируем безопасный LOW до Wi-Fi.
+  settingsSetup(); // Загрузка параметров из EEPROM.
+  calibrationSetup(); // Загрузка сохранённого смещения энкодера.
   encoderSetup();
   wifiSetup();
   timeSetup();
   webSetup();
 
+  Serial.print("[SYSTEM] Device: ");Serial.println(DEVICE_NAME);
   Serial.println("[SYSTEM] Startup complete");
 }
 
