@@ -390,7 +390,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.8 · Тестовый режим ·
+  LuchClock v1.9 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -441,10 +441,10 @@ function renderStatus(s) {
   $('calibrationAutoBtn').disabled=!calAllowed || calibrationBusy;
   $('calibrationSaveBtn').disabled=!calAllowed || calibrationBusy || !calibrationPending;
   text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_offset:'Не откалиброван');
-  if(calibrationPending && calibrationPreviewPosition!==s.encoder_position){
+  if(calibrationPending && (calibrationPreviewPosition!==s.encoder_position || Date.now()-calibrationPreviewAt>20000 || Number((s.time_local||"").slice(-5,-3))!==calibrationPreviewMinute)){
     calibrationPending=false;
     $('calibrationSaveBtn').disabled=true;
-    text('calibrationMessage','Положение энкодера изменилось. Повторите «Авто».');
+    text('calibrationMessage','Расчёт устарел или энкодер повернулся. Повторите «Авто».');
   }
   if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
@@ -829,6 +829,8 @@ async function submitSettings(operation){
 let calibrationBusy=false;
 let calibrationPending=false;
 let calibrationPreviewPosition=-1;
+let calibrationPreviewAt=0;
+let calibrationPreviewMinute=-1;
 async function previewCalibration(){
   if(calibrationBusy)return;
   calibrationBusy=true;calibrationPending=false;
@@ -837,6 +839,7 @@ async function previewCalibration(){
     if(!response.ok)throw Error(await response.text());
     const data=await response.json();
     calibrationPending=true;calibrationPreviewPosition=data.position;
+    calibrationPreviewAt=Date.now();calibrationPreviewMinute=data.minute;
     text('calibrationMessage','NTP: '+String(data.minute).padStart(2,'0')+' мин · позиция '+data.position+' · смещение '+data.offset+'. Проверьте и сохраните.');
   }catch(e){text('calibrationMessage',e.message)}
   finally{calibrationBusy=false;await refresh();}
