@@ -411,7 +411,7 @@ void handleSettingsPost(){
     return;
   }
   webAddEvent(operation=="save"?"Настройки сохранены":"Настройки применены временно");
-  server.send(200,"application/json","{\\"ok\\":true}");
+  server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
 }
 void handleFaultReset(){
   if(currentMode!="off" || !encoderValid() || !motorResetAutoFault()){
@@ -419,7 +419,7 @@ void handleFaultReset(){
     return;
   }
   webAddEvent("Авария сброшена оператором");
-  server.send(200,"application/json","{\\"ok\\":true}");
+  server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
 }
 
 void webSetup() {
