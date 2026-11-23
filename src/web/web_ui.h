@@ -679,7 +679,7 @@ async function loadLog() {
     }
     for (const event of data.events) {
       const warning=/лимит ручной работы|защитная пауза/i.test(event.message);
-      const critical=/аварийн|критическ|потеря связи с энкодером|не фиксирует движение/i.test(event.message);
+      const critical=/аварийн|критическ|потеря связи с энкодером|энкодер недоступен|не фиксирует движение/i.test(event.message);
       const item = document.createElement('div');
       item.className = 'event';
       const title = document.createElement('div');
