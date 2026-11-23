@@ -11,3 +11,9 @@ unsigned long motorWaitRemainingMs();
 bool motorCanForward();
 bool motorCanReverse();
 bool motorCanStop();
+
+unsigned long motorRunElapsedMs();
+unsigned long motorManualPauseRemainingMs();
+bool motorAutoFault();
+bool motorResetAutoFault();
+void motorSetAutoMode(bool enabled);
