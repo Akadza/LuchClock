@@ -50,7 +50,7 @@ bool calibrationPreview(uint8_t minute,int16_t rawPosition,uint8_t& offset){
   return true;
 }
 bool calibrationCommit(uint8_t minute,int16_t rawPosition){
-  if(!pending || minute!=candidateMinute || rawPosition!=candidatePosition)return false;
+  if(!pending || rawPosition!=candidatePosition)return false;
   CalibrationRecord r={CAL_MAGIC,1,candidateOffset,(uint8_t)(candidateOffset ^ 0xA5),0};
   EEPROM.put(CAL_EEPROM_OFFSET,r);
   if(!EEPROM.commit())return false;
