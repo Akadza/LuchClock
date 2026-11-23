@@ -321,6 +321,7 @@ void handleCommand() {
     return;
   }
 
+  calibrationDiscard();
   webAddEvent(String("Ручная команда: ") + action);
   server.send(
     200,
@@ -525,6 +526,7 @@ void webLoop() {
   if (!encoderNowValid && currentMode!="off") {
     // При потере датчика во время движения motorLoop уже фиксирует аварию.
     // Режим OFF сохраняет аварийную блокировку до ручного сброса.
+    calibrationDiscard();
     motorStop();currentMode="off";manualMode=false;autoReady=false;
     modeTransition=false;motorSetAutoMode(false);
     webAddEvent("Энкодер недоступен: переход в Выключен");
