@@ -31,6 +31,9 @@ static bool encoderProbe(uint8_t addr) {
 }
 static void encoderFindDevice() {
   encoderAddress = 0;
+  encoderPosition = -1;
+  encoderStableCount = 0;
+  encoderCandidate = 255;
   for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
     if (encoderProbe(addr)) { encoderAddress = addr; break; }
   }
@@ -64,6 +67,7 @@ void encoderLoop() {
     encoderAddress = 0;
     encoderPosition = -1;
     encoderStableCount = 0;
+    encoderCandidate = 255;
     return;
   }
   const uint8_t value = (uint8_t)Wire.read();
