@@ -23,6 +23,7 @@ static uint8_t encoderRaw = 255;
 static int16_t encoderPosition = -1;
 static uint8_t encoderCandidate = 255;
 static uint8_t encoderStableCount = 0;
+static bool decoded = false;
 static unsigned long encoderLastRead = 0;
 static unsigned long encoderLastProbe = 0;
 
@@ -33,6 +34,7 @@ static bool encoderProbe(uint8_t addr) {
 static void encoderFindDevice() {
   encoderAddress = 0;
   encoderPosition = -1;
+  decoded = false;
   encoderStableCount = 0;
   encoderCandidate = 255;
   for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
@@ -67,6 +69,7 @@ void encoderLoop() {
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
     encoderAddress = 0;
     encoderPosition = -1;
+    decoded = false;
     encoderStableCount = 0;
     encoderCandidate = 255;
     return;
@@ -79,6 +82,8 @@ void encoderLoop() {
   }
   if (encoderStableCount < settingsCurrent().encoderStableSamples) ++encoderStableCount;
   if (encoderStableCount < settingsCurrent().encoderStableSamples) return;
+  if(decoded && encoderRaw==value)return;
+  decoded=true;
   encoderRaw = value;
   encoderPosition = -1;
   for (int i = 0; i < 128; ++i) {
