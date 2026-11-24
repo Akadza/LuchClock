@@ -2,7 +2,6 @@
 #include "../../config.h"
 #include "event_logger.h"
 #include "hardware.h"
-#include "../encoder/encoder_calibration.h"
 enum class ClockMode { Off, Manual, Auto };
 static ClockMode currentMode=ClockMode::Off;
 static const char* modeText(){switch(currentMode){case ClockMode::Manual:return "manual";case ClockMode::Auto:return "auto";default:return "off";}}
@@ -26,7 +25,7 @@ static bool modeIsReady() {
 static bool calibrationReady(){
  return (currentMode==ClockMode::Manual || currentMode==ClockMode::Off) && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderValid() && clockTime().timeIsFresh();
 }
-static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibrationTimeAllowed(minute) && calibrationNeeded(minute,encoder().encoderRawPosition());}
+static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibration().timeAllowed(minute) && calibration().needed(minute,encoder().encoderRawPosition());}
 static bool settingsAllowed(){return currentMode!=ClockMode::Auto && motor().motorState()==MOTOR_STOPPED && !modeTransition;}
 class Controller final:public IController {
 public:
@@ -43,13 +42,13 @@ public:
  s.encoderPosition=encoder().encoderCalibratedPosition();
  s.encoderRawPosition=encoder().encoderRawPosition();
  s.encoderMinutes=encoder().encoderMinutes();
- s.calibrationSaved=calibrationSaved();
+ s.calibrationSaved=calibration().saved();
  uint8_t minute=0;
  s.localClockMs=0;
  const bool localValid=clockTime().localClock(s.localClockMs,minute);
- s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibrationNeeded(minute,encoder().encoderRawPosition());
- s.calibrationOffset=calibrationOffset();
- s.calibrationSignedOffset=(int)calibrationSignedOffset();
+ s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibration().needed(minute,encoder().encoderRawPosition());
+ s.calibrationOffset=calibration().offset();
+ s.calibrationSignedOffset=(int)calibration().signedOffset();
  s.motorRun=motor().motorRunElapsedMs();
  s.manualPause=motor().motorManualPauseRemainingMs();
  s.fault=motor().motorAutoFault();
@@ -150,11 +149,11 @@ return {ResultCode::Ok,""};}
 return {ResultCode::Ok,""};}
  CommandResult calibrate() override {
  if(!calibrationReady())return {ResultCode::Blocked,"Калибровка недоступна"};
- uint8_t minute=0;if(!calibrationTimeAllowed(minute))return {ResultCode::Blocked,""};
+ uint8_t minute=0;if(!calibration().timeAllowed(minute))return {ResultCode::Blocked,""};
  const int16_t raw=encoder().encoderRawPosition();
  if(raw<0 || raw>=128)return {ResultCode::Blocked,"Калибровка недоступна"};
- if(!calibrationNeeded(minute,raw))return {ResultCode::Blocked,""};
- if(!calibrationSave(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
+ if(!calibration().needed(minute,raw))return {ResultCode::Blocked,""};
+ if(!calibration().save(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
  eventAdd("Калибровка энкодера сохранена","CALIBRATION_SAVED","info");return {ResultCode::Ok,""};
  }
  CommandResult resetFault() override {
