@@ -1,7 +1,4 @@
 #include "controller.h"
-#include <sys/time.h>
-#include <time.h>
-#include <ESP8266WiFi.h>
 #include "../../config.h"
 #include "event_logger.h"
 #include "hardware.h"
@@ -36,8 +33,8 @@ public:
  ControllerState s;
  s.mode=state();
  s.device=DEVICE_NAME;
- s.wifi=WiFi.status() == WL_CONNECTED;
- s.ip=WiFi.localIP().toString();
+ s.wifi=networkStatus().connected();
+ s.ip=networkStatus().ip();
  s.encoderConnected=encoder().encoderConnected();
  s.encoderValid=encoder().encoderValid();
  s.encoderAddress=encoder().address();
@@ -46,13 +43,10 @@ public:
  s.encoderRawPosition=encoder().encoderRawPosition();
  s.encoderMinutes=encoder().encoderMinutes();
  s.calibrationSaved=calibrationSaved();
- struct timeval tv={};
- gettimeofday(&tv,nullptr);
- struct tm local={};
- time_t seconds=tv.tv_sec;
- const bool localValid=localtime_r(&seconds,&local)!=nullptr;
- s.localClockMs=localValid?((uint64_t)local.tm_hour*3600+local.tm_min*60+local.tm_sec)*1000+tv.tv_usec/1000:0;
- s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibrationNeeded(local.tm_min,encoder().encoderRawPosition());
+ uint8_t minute=0;
+ s.localClockMs=0;
+ const bool localValid=clockTime().localClock(s.localClockMs,minute);
+ s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibrationNeeded(minute,encoder().encoderRawPosition());
  s.calibrationOffset=calibrationOffset();
  s.calibrationSignedOffset=(int)calibrationSignedOffset();
  s.motorRun=motor().motorRunElapsedMs();
@@ -71,14 +65,14 @@ public:
  s.motorWaitTotal=DEFAULT_MOTOR_STOP_DELAY_MS;
  return s;
  }
- RuntimeSettings settings() const override {return runtimeSettings;}
+ RuntimeSettings settings() const override {return settingsCurrent();}
  bool settingsSaved() const override {return settingsPersistedMatches();}
  ModeState state() const override {
  return {currentMode,manualMode,modeTransition,currentMode=="auto" && autoReady && modeIsReady() && !motor().motorAutoFault(),
  manualMode && modeIsReady() && motor().motorCanForward(),manualMode && modeIsReady() && motor().motorCanReverse(),
  manualMode && (motor().motorState()==MOTOR_FORWARD || motor().motorState()==MOTOR_REVERSE),
  encoder().encoderValid() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
- calibrationAllowed(),settingsAllowed(),modeWaitRemainingMs(),(manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL,
+ calibrationAllowed(),settingsAllowed(),modeWaitRemainingMs(),(manualMode?settingsCurrent().manualLimitSec:settingsCurrent().autoLimitSec)*1000UL,
  currentMode!="manual" && encoder().encoderValid() && !motor().motorAutoFault() && modeIsReady(),
  currentMode!="off", currentMode=="off" && encoder().encoderValid() && motor().motorAutoFault(), currentMode=="off" && motor().motorAutoFault()};
  }
@@ -171,8 +165,7 @@ return {200,""};}
  CommandResult changeSettings(const RuntimeSettings& next,bool save) override {
  if(!settingsAllowed())return {409,"Остановите двигатель и дождитесь окончания паузы"};
  if(!settingsValidate(next))return {400,"Некорректные параметры"};
- RuntimeSettings previous=runtimeSettings;runtimeSettings=next;
- if(save && !settingsSave()){runtimeSettings=previous;return {500,"Не удалось сохранить настройки"};}
+ if(!settingsChange(next,save))return {500,"Не удалось сохранить настройки"};
  eventAdd(save?"Настройки сохранены":"Настройки применены временно",save?"SETTINGS_SAVED":"SETTINGS_APPLIED");return {200,""};
  }
 };
