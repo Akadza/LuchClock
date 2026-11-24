@@ -382,7 +382,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.15 · Тестовый режим ·
+  LuchClock <span id="firmwareVersion">—</span> · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -430,6 +430,7 @@ function text(id, value, css) {
 }
 
 function renderStatus(s) {
+  text('firmwareVersion','v'+s.version);
   text('deviceName',s.device || 'LuchClock1');
   const calAllowed=s.calibration_allowed===true;
   $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
@@ -502,12 +503,8 @@ function renderStatus(s) {
   updateManualButtons(lastMotorState, lastMotorWait);
   updateProgress();
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
-  $('autoBtn').disabled = modeRequestPending || (s.mode !== 'auto' && !s.can_auto);
-  $('offBtn').disabled = modeRequestPending || s.mode === 'off';
-  $('faultActions').hidden = !(s.mode === 'off' && s.auto_fault);
-  $('autoBtn').title = (s.mode === 'manual' && !s.can_auto) ? 'Сначала нажмите Стоп и дождитесь остановки' : '';
-  $('manualBtn').disabled = modeRequestPending || (s.mode !== 'manual' && (s.mode_transition || s.motor_state !== 'stopped'));
-  $('manualBtn').title = (s.mode === 'auto' && s.mode_transition) ? 'Дождитесь завершения защитной паузы' : '';
+  $('faultActions').hidden = !s.show_fault_reset;
+  updateManualButtons(lastMotorState,lastMotorWait);
   if (s.mode === 'auto') {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
       s.auto_ready ? 'Контроллер готов' : 'Автоматический режим не готов');
@@ -575,18 +572,14 @@ function updateManualButtons(state, remaining) {
   const busy = commandPending || modeRequestPending || !!pendingAction;
   const s = lastStatus;
   const transition = s && s.mode_transition;
-  const allowedForward = statusKnown && !busy && !transition && motorPermissions.can_forward && state !== 'forward';
-  const allowedBackward = statusKnown && !busy && !transition && motorPermissions.can_reverse && state !== 'reverse';
-  $('forwardBtn').disabled = !allowedForward;
-  $('backwardBtn').disabled = !allowedBackward;
-  $('stopBtn').disabled = commandPending || !statusKnown || !motorPermissions.can_stop || (state !== 'forward' && state !== 'reverse');
-  if (s) {
-    $('autoBtn').disabled=modeRequestPending || !s.encoder_valid || !s.can_auto;
-    $('manualBtn').disabled=modeRequestPending || !s.encoder_valid || !!s.auto_fault || (s.mode!=='manual' && (s.mode_transition || s.motor_state!=='stopped'));
-  }
-  if (s && s.mode === 'manual') {
-    $('autoBtn').disabled = modeRequestPending || !s.can_auto || state !== 'stopped';
-  }
+  $('forwardBtn').disabled = !statusKnown || busy || !s?.can_forward;
+  $('backwardBtn').disabled = !statusKnown || busy || !s?.can_reverse;
+  $('stopBtn').disabled = !statusKnown || commandPending || !s?.can_stop;
+  $('autoBtn').disabled = !statusKnown || busy || !s?.can_auto || currentMode==='auto';
+  $('manualBtn').disabled = !statusKnown || busy || !s?.can_manual;
+  $('offBtn').disabled = !statusKnown || modeRequestPending || !s?.can_off;
+  const reset=$('faultActions').querySelector('button');
+  if(reset)reset.disabled=!statusKnown || !s?.can_reset_fault;
   $('forwardBtn').classList.toggle('running', state === 'forward');
   $('backwardBtn').classList.toggle('running', state === 'reverse');
   if(s && s.manual_pause_ms>0)text('commandInfo','Пауза после лимита · '+Math.ceil(s.manual_pause_ms/1000)+' с');
@@ -620,21 +613,22 @@ async function refresh() {
   }
 }
 
+async function errorMessage(response){
+  try {const data=await response.json();return data.message || 'Ошибка запроса';}catch(e){return 'HTTP '+response.status;}
+}
 async function post(path) {
   const response = await fetch(path, {method:'POST'});
   if (!response.ok) {
-    const msg = await response.text();
+    const msg = await errorMessage(response);
     throw Error(msg || 'Ошибка запроса');
   }
 }
 
 async function setMode(mode) {
   if (modeRequestPending || commandPending || mode === currentMode) return;
-  if (mode === 'auto' && (!lastStatus || !lastStatus.encoder_valid || !lastStatus.can_auto || lastMotorState !== 'stopped')) return;
-  if (mode === 'manual' && (!lastStatus || !lastStatus.encoder_valid || lastStatus.mode_transition || lastMotorState !== 'stopped')) return;
+  if (!statusKnown || !lastStatus || !lastStatus['can_'+mode]) return;
   const previous = currentMode;
   modeRequestPending = true;
-  showMode(mode);
   $('autoBtn').disabled = true;
   $('manualBtn').disabled = true;
   try {
@@ -647,11 +641,7 @@ async function setMode(mode) {
     modeRequestPending = false;
     // Не снимаем защитную блокировку до получения актуального статуса ESP.
     await refresh();
-    if (lastStatus) {
-      $('autoBtn').disabled = !lastStatus.encoder_valid || !lastStatus.can_auto;
-      $('manualBtn').disabled = !lastStatus.encoder_valid || lastStatus.auto_fault ||
-        (lastStatus.mode_transition || lastStatus.motor_state !== 'stopped');
-    }
+    updateManualButtons(lastMotorState,lastMotorWait);
   }
 }
 
@@ -701,8 +691,8 @@ async function loadLog() {
       return;
     }
     for (const event of data.events) {
-      const warning=/лимит ручной работы|защитная пауза/i.test(event.message);
-      const critical=/аварийн|критическ|потеря связи с энкодером|энкодер недоступен|не фиксирует движение/i.test(event.message);
+      const warning=event.level==='warning';
+      const critical=event.level==='critical';
       const item = document.createElement('div');
       item.className = 'event';
       const title = document.createElement('div');
@@ -809,7 +799,7 @@ async function submitSettings(operation){
   settingsBusy=true;updateSettingsButtons();
   try{
     const response=await fetch('/api/settings',{method:'POST',body:args});
-    if(!response.ok)throw Error(await response.text());
+    if(!response.ok)throw Error(await errorMessage(response));
     appliedSettings=currentSettings();
     savedSettings=operation==='save';
     await refresh();loadLog();
@@ -825,7 +815,7 @@ async function runCalibration(){
   try{
     const response=await fetch('/api/calibration',{method:'POST'});
     if(response.status===409)return;
-    if(!response.ok)throw Error(await response.text());
+    if(!response.ok)throw Error(await errorMessage(response));
     text('calibrationMessage','Калибровка сохранена во flash.');
     loadLog();
   }catch(e){text('calibrationMessage',e.message)}
