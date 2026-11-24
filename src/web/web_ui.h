@@ -244,8 +244,8 @@ main {max-width:1024px}
  .event > div:first-child {grid-column:1;grid-row:2}
 }
 /* Independent settings dialog with its own scroll; page stays compact. */
-.header-actions{display:flex;align-items:center;gap:10px}
-.gear-button{font-size:18px;width:34px;height:30px;padding:0;line-height:1;border-radius:8px;flex:none}
+.header-actions{display:flex;align-items:stretch;gap:10px}
+.header-actions .gear-button{display:flex;align-items:center;justify-content:center;font-size:18px;width:34px;height:auto;min-height:0;padding:0;line-height:1;border-radius:8px;flex:none;align-self:stretch}
 .off-note{font-size:13px;color:var(--muted);margin:6px 0 0;background:none;border:0;padding:0}
 body.modal-open{overflow:hidden}
 .settings-overlay[hidden]{display:none!important}
@@ -382,7 +382,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.10 · Тестовый режим ·
+  LuchClock v1.11 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -429,8 +429,9 @@ function text(id, value, css) {
 
 function renderStatus(s) {
   text('deviceName',s.device || 'LuchClock1');
-  const calAllowed=s.mode==='manual' && s.motor_state==='stopped' && !s.mode_transition && !s.auto_fault && s.encoder_valid && s.ntp_recent;
+  const calAllowed=s.calibration_allowed===true;
   $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
+  $('calibrationBtn').title=calAllowed?'Откалибровать и сохранить':'Нужен ручной режим, остановленный двигатель, исправный энкодер и актуальный NTP';
   text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_offset:'Не откалиброван');
   if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
@@ -477,7 +478,7 @@ function renderStatus(s) {
   text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
   text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
   text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position : 'Нет данных', 'value ' + (s.encoder_valid ? 'ok' : 'warn'));
-  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · позиция: ' + s.encoder_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · сырая позиция: ' + s.encoder_raw_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
@@ -609,6 +610,7 @@ async function refresh() {
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
       statusKnown = false;
+      $('calibrationBtn').disabled=true;
       updateManualButtons(lastMotorState, 0);
     }
   } finally {
