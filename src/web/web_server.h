@@ -5,4 +5,3 @@
 void webSetup();
 void webLoop();
 
-void webAddEvent(const String& message);
