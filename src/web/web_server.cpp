@@ -4,15 +4,11 @@
 #include <time.h>
 
 #include "../../config.h"
-#include "../network/time_manager.h"
 #include "web_server.h"
 #include "../application/controller.h"
 #include "../application/event_logger.h"
 #include "web_ui.h"
-#include "../motor/motor_controller.h"
 #include "../system_settings.h"
-#include "../encoder/encoder_reader.h"
-#include "../encoder/encoder_calibration.h"
 
 static ESP8266WebServer server(WEB_PORT);
 
@@ -73,18 +69,19 @@ void handleRoot() {
 
 
 void handleStatus() {
-  const ModeState state=controller().state();
+  const ControllerState snapshot=controller().snapshot();
+  const ModeState& state=snapshot.mode;
   String json;
-  json.reserve(560);
+  json.reserve(1600);
 
-  json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.13\",");
+  json += F("{\"device\":\"");json+=jsonEscape(snapshot.device);json+=F("\",");
+  json += F("\"version\":\"1.14\",");
 
   json += F("\"wifi\":");
-  json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
+  json += (snapshot.wifi) ? "true" : "false";
 
   json += F(",\"ip\":\"");
-  json += WiFi.localIP().toString();
+  json += snapshot.ip;
 
   json += F("\",\"mode\":\"");
   json += state.mode;
@@ -92,56 +89,56 @@ void handleStatus() {
   json += F("\",\"simulation\":false");
 
   json += F(",\"encoder_connected\":");
-  json += encoderConnected() ? "true" : "false";
+  json += snapshot.encoderConnected ? "true" : "false";
   json += F(",\"encoder_valid\":");
-  json += encoderValid() ? "true" : "false";
+  json += snapshot.encoderValid ? "true" : "false";
   json += F(",\"encoder_address\":");
-  json += String(encoderAddress);
+  json += String(snapshot.encoderAddress);
   json += F(",\"encoder_raw\":");
-  json += String(encoderRaw);
+  json += String(snapshot.encoderRaw);
   json += F(",\"encoder_position\":");
-  json += String(encoderCalibratedPosition());
-  json += F(",\"encoder_raw_position\":");json += String(encoderRawPosition());
+  json += String(snapshot.encoderPosition);
+  json += F(",\"encoder_raw_position\":");json += String(snapshot.snapshot.encoderRawPosition);
   json += F(",\"calibration_allowed\":");json += state.calibrationAllowed?"true":"false";
   json += F(",\"encoder_minutes\":");
-  json += String(encoderMinutes());
-  json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
-  json += F(",\"calibration_offset\":");json += String(calibrationOffset());
-  json += F(",\"calibration_signed_offset\":");json += String((int)calibrationSignedOffset());
+  json += String(snapshot.encoderMinutes);
+  json += F(",\"calibration_saved\":");json += snapshot.calibrationSaved?"true":"false";
+  json += F(",\"calibration_offset\":");json += String(snapshot.calibrationOffset);
+  json += F(",\"calibration_signed_offset\":");json += String(snapshot.calibrationSignedOffset);
 
-  json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
+  json += F(",\"motor_run_ms\":");json += String(snapshot.motorRun);
   json += F(",\"motor_limit_ms\":");json += String(state.motorLimitMs);
-  json += F(",\"manual_pause_ms\":");json += String(motorManualPauseRemainingMs());
-  json += F(",\"auto_fault\":");json += motorAutoFault()?"true":"false";
-  json += F(",\"fault_reason\":\"");json += motorFaultReason();json += F("\"");
+  json += F(",\"manual_pause_ms\":");json += String(snapshot.manualPause);
+  json += F(",\"auto_fault\":");json += snapshot.fault?"true":"false";
+  json += F(",\"fault_reason\":\"");json += snapshot.faultReason;json += F("\"");
   json += F(",\"uptime_seconds\":");
-  json += String(millis() / 1000UL);
+  json += String(snapshot.uptime);
 
   json += F(",\"ntp_synced\":");
-  json += timeIsValid() ? "true" : "false";
+  json += snapshot.ntpSynced ? "true" : "false";
 
   json += F(",\"ntp_recent\":");
-  json += timeIsFresh() ? "true" : "false";
+  json += snapshot.ntpRecent ? "true" : "false";
 
   json += F(",\"time_local\":\"");
-  json += timeLocalString();
+  json += snapshot.localTime;
 
   json += F("\",\"last_ntp_sync\":\"");
-  json += timeLastSyncString();
+  json += snapshot.lastSync;
 
   json += F("\",\"ntp_age_seconds\":");
   json += String(timeSyncAgeSeconds());
 
   json += F(",\"motor_state\":\"");
-  json += motorStateText();
+  json += snapshot.motorState;
   json += F("\",\"motor_wait_ms\":");
-  json += String(motorWaitRemainingMs());
+  json += String(snapshot.motorWait);
   json += F(",\"mode_transition\":");
   json += state.transition ? "true" : "false";
   json += F(",\"mode_wait_total_ms\":");
-  json += String(DEFAULT_MODE_DELAY_MS);
+  json += String(snapshot.modeWaitTotal);
   json += F(",\"motor_wait_total_ms\":");
-  json += String(DEFAULT_MOTOR_STOP_DELAY_MS);
+  json += String(snapshot.motorWaitTotal);
   json += F(",\"mode_wait_ms\":");
   json += String(state.waitMs);
   json += F(",\"auto_ready\":");
@@ -155,6 +152,7 @@ void handleStatus() {
   json += F(",\"can_auto\":");
   json += state.canAuto ? "true" : "false";
 
+  json += F(",\"settings_allowed\":");json += state.settingsAllowed?"true":"false";
   json += F("}");
 
   server.sendHeader("Cache-Control", "no-store");
@@ -222,27 +220,28 @@ static bool readSetting(const char* name,uint32_t& value) {
   value=v;return true;
 }
 void handleSettingsGet(){
+  const RuntimeSettings settings=controller().settings();
   String json="{", sep="";
-  json+=sep+String(char(34))+"manualLimitSec"+char(34)+":"+String(runtimeSettings.manualLimitSec);sep=",";
-  json+=sep+String(char(34))+"autoLimitSec"+char(34)+":"+String(runtimeSettings.autoLimitSec);sep=",";
-  json+=sep+String(char(34))+"manualPauseSec"+char(34)+":"+String(runtimeSettings.manualPauseSec);sep=",";
-  json+=sep+String(char(34))+"calibrationGuardSec"+char(34)+":"+String(runtimeSettings.calibrationGuardSec);sep=",";
-  json+=sep+String(char(34))+"noMotionWarnSec"+char(34)+":"+String(runtimeSettings.noMotionWarnSec);sep=",";
-  json+=sep+String(char(34))+"autoStepMin"+char(34)+":"+String(runtimeSettings.autoStepMin);sep=",";
-  json+=sep+String(char(34))+"wifiReconnectMs"+char(34)+":"+String(runtimeSettings.wifiReconnectMs);sep=",";
-  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(runtimeSettings.wifiDiagnosticMs);sep=",";
-  json+=sep+String(char(34))+"ntpStaleSec"+char(34)+":"+String(runtimeSettings.ntpStaleSec);sep=",";
-  json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(runtimeSettings.encoderPollMs);sep=",";
-  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(runtimeSettings.encoderProbeMs);sep=",";
-  json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(runtimeSettings.encoderStableSamples);sep=",";
+  json+=sep+String(char(34))+"manualLimitSec"+char(34)+":"+String(settings.manualLimitSec);sep=",";
+  json+=sep+String(char(34))+"autoLimitSec"+char(34)+":"+String(settings.autoLimitSec);sep=",";
+  json+=sep+String(char(34))+"manualPauseSec"+char(34)+":"+String(settings.manualPauseSec);sep=",";
+  json+=sep+String(char(34))+"calibrationGuardSec"+char(34)+":"+String(settings.calibrationGuardSec);sep=",";
+  json+=sep+String(char(34))+"noMotionWarnSec"+char(34)+":"+String(settings.noMotionWarnSec);sep=",";
+  json+=sep+String(char(34))+"autoStepMin"+char(34)+":"+String(settings.autoStepMin);sep=",";
+  json+=sep+String(char(34))+"wifiReconnectMs"+char(34)+":"+String(settings.wifiReconnectMs);sep=",";
+  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(settings.wifiDiagnosticMs);sep=",";
+  json+=sep+String(char(34))+"ntpStaleSec"+char(34)+":"+String(settings.ntpStaleSec);sep=",";
+  json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(settings.encoderPollMs);sep=",";
+  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(settings.encoderProbeMs);sep=",";
+  json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(settings.encoderStableSamples);sep=",";
   json+=","+String(char(34))+"_saved"+char(34)+":";
-  json+=settingsPersistedMatches()?"true":"false";
+  json+=controller().settingsSaved()?"true":"false";
   json+="}";
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
 }
 void handleSettingsPost(){
-  RuntimeSettings next=runtimeSettings;
+  RuntimeSettings next=controller().settings();
   if(!readSetting("manualLimitSec",next.manualLimitSec) ||
      !readSetting("autoLimitSec",next.autoLimitSec) ||
      !readSetting("manualPauseSec",next.manualPauseSec) ||
@@ -287,7 +286,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.13 started");
+  Serial.println("[WEB] HTTP server v1.14 started");
 }
 
 void webLoop(){server.handleClient();}
