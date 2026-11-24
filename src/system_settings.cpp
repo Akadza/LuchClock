@@ -1,7 +1,15 @@
 #include "system_settings.h"
 #include "storage/storage.h"
 #include <stddef.h>
-RuntimeSettings runtimeSettings;
+static RuntimeSettings runtimeSettings;
+const RuntimeSettings& settingsCurrent(){return runtimeSettings;}
+bool settingsChange(const RuntimeSettings& next,bool save){
+ if(!settingsValidate(next))return false;
+ const RuntimeSettings previous=runtimeSettings;
+ runtimeSettings=next;
+ if(save && !settingsSave()){runtimeSettings=previous;return false;}
+ return true;
+}
 struct StoredSettings {
   uint32_t magic;
   uint32_t version;
