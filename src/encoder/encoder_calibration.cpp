@@ -2,6 +2,8 @@
 #include "encoder_reader.h"
 #include "../system_settings.h"
 #include <EEPROM.h>
+#include <time.h>
+#include "../network/time_manager.h"
 
 struct CalibrationRecord {
   uint32_t magic;
@@ -44,5 +46,16 @@ bool calibrationSave(uint8_t minute,int16_t rawPosition){
   storedOffset=offset;
   storedValid=true;
   Serial.printf("[CAL] Saved offset=%u\n",storedOffset);
+  return true;
+}
+
+int8_t calibrationSignedOffset(){return storedOffset>=64?(int16_t)storedOffset-128:storedOffset;}
+bool calibrationTimeAllowed(uint8_t& minute){
+  if(!timeIsFresh())return false;
+  time_t now=time(nullptr);
+  struct tm local={};
+  if(!localtime_r(&now,&local))return false;
+  if((uint32_t)local.tm_sec>=60UL-runtimeSettings.calibrationGuardSec)return false;
+  minute=(uint8_t)local.tm_min;
   return true;
 }
