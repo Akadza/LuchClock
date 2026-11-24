@@ -50,3 +50,15 @@ public:
  virtual String ip()=0;
 };
 INetworkStatus& networkStatus();
+
+class ICalibration {
+public:
+ virtual ~ICalibration()=default;
+ virtual bool saved()=0;
+ virtual uint8_t offset()=0;
+ virtual int8_t signedOffset()=0;
+ virtual bool needed(uint8_t minute,int16_t raw)=0;
+ virtual bool save(uint8_t minute,int16_t raw)=0;
+ virtual bool timeAllowed(uint8_t& minute)=0;
+};
+ICalibration& calibration();
