@@ -75,7 +75,7 @@ void handleStatus() {
   json.reserve(1600);
 
   json += F("{\"device\":\"");json+=jsonEscape(snapshot.device);json+=F("\",");
-  json += F("\"version\":\"1.14\",");
+  json += F("\"version\":\"1.15\",");
 
   json += F("\"wifi\":");
   json += (snapshot.wifi) ? "true" : "false";
@@ -286,7 +286,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.14 started");
+  Serial.println("[WEB] HTTP server v1.15 started");
 }
 
 void webLoop(){server.handleClient();}
