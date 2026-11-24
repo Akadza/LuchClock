@@ -409,6 +409,13 @@ let statusFailures = 0;
 let statusKnown = false;
 let modeSwitchUntil = 0;
 let lastStatusAt = 0;
+let clockBase=0, clockAt=0, clockValid=false;
+function tickClock(){
+ if(!clockValid)return;
+ const sec=Math.floor((clockBase+performance.now()-clockAt)/1000)%86400;
+ const pad=n=>String(n).padStart(2,'0');
+ text('time',pad(Math.floor(sec/3600))+':'+pad(Math.floor(sec/60)%60)+':'+pad(sec%60));
+}
 let lastMotorWait = 0;
 let lastModeWait = 0;
 let lastStatus = null;
@@ -430,6 +437,9 @@ function text(id, value, css) {
 }
 
 function renderStatus(s) {
+  clockValid=!!s.ntp_synced && Number.isFinite(s.clock_ms);
+  if(clockValid){const now=performance.now();const predicted=(clockBase+now-clockAt)%86400000;const delta=((s.clock_ms-predicted+129600000)%86400000)-43200000;if(!clockAt || Math.abs(delta)>250){clockBase=s.clock_ms;clockAt=now;}tickClock();}else{clockAt=0;}
+  text('calibrationBtn',s.calibration_current?'Откалибровано':'Откалибровать');
   text('firmwareVersion','v'+s.version);
   text('deviceName',s.device || 'LuchClock1');
   const calAllowed=s.calibration_allowed===true;
@@ -454,7 +464,7 @@ function renderStatus(s) {
     text('ntp', 'Ожидание', 'value warn');
     text('ntpDetail', 'Ожидание первой синхронизации');
   } else {
-    text('time', s.time_local || '--:--:--');
+    if(!clockValid)text('time', s.time_local || '--:--:--');
 
     if(s.mode==='off')text('modeHint','Выключен · выход D5 отключён');
   if (s.ntp_recent) {
@@ -605,6 +615,8 @@ async function refresh() {
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
       statusKnown = false;
+      clockValid=false;clockAt=0;
+      text('time','--:--:--');
       $('calibrationBtn').disabled=true;
       updateManualButtons(lastMotorState, 0);
     }
@@ -816,7 +828,8 @@ async function runCalibration(){
     const response=await fetch('/api/calibration',{method:'POST'});
     if(response.status===409)return;
     if(!response.ok)throw Error(await errorMessage(response));
-    text('calibrationMessage','Калибровка сохранена во flash.');
+    text('calibrationBtn','Откалибровано');
+    text('calibrationMessage','');
     loadLog();
   }catch(e){text('calibrationMessage',e.message)}
   finally{calibrationBusy=false;await refresh();}
@@ -830,6 +843,7 @@ refresh();
 loadLog();
 setInterval(()=>{if(!modeRequestPending && !commandPending && !settingsBusy && !calibrationBusy)refresh();}, 400);
 setInterval(() => {
+  tickClock();
   if (!lastStatus) return;
   const elapsed = Date.now() - lastStatusAt;
   if (lastStatus.motor_state === 'waiting') {
