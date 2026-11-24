@@ -117,7 +117,7 @@ TimeEvent timeLoop() {
   }
 
   if (everSynchronized && !syncStale &&
-      millis() - lastSyncMillis >= (runtimeSettings.ntpStaleSec * 1000UL)) {
+      millis() - lastSyncMillis >= (settingsCurrent().ntpStaleSec * 1000UL)) {
 
     syncStale = true;
 
