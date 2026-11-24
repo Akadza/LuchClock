@@ -2,8 +2,8 @@
 #include <Arduino.h>
 
 // Shared encoder state: implementation lives in encoder_reader.cpp.
-extern uint8_t encoderAddress;
-extern uint8_t encoderRaw;
+uint8_t encoderAddressValue();
+uint8_t encoderRawValue();
 int16_t encoderRawPosition(); // Диагностика и контроль физического движения.
 int16_t encoderCalibratedPosition(); // Рабочая позиция стрелки.
 
