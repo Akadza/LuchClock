@@ -382,7 +382,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.14 · Тестовый режим ·
+  LuchClock v1.15 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
