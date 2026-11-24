@@ -1,4 +1,5 @@
 #include "encoder_reader.h"
+#include "encoder_calibration.h"
 #include "../system_settings.h"
 #include <Wire.h>
 #include <pgmspace.h>
@@ -19,7 +20,7 @@ static const uint8_t encoderCodes[128] PROGMEM = {
 };
 uint8_t encoderAddress = 0;
 uint8_t encoderRaw = 255;
-int16_t encoderPosition = -1;
+static int16_t encoderPosition = -1;
 static uint8_t encoderCandidate = 255;
 static uint8_t encoderStableCount = 0;
 static unsigned long encoderLastRead = 0;
@@ -89,4 +90,11 @@ void encoderLoop() {
 }
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
-int encoderMinutes() { return encoderValid() ? (encoderPosition * 60 / 128) : -1; }
+int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
+int16_t encoderCalibratedPosition(){
+  return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;
+}
+int encoderMinutes(){
+  const int16_t position=encoderCalibratedPosition();
+  return position>=0?position*60/128:-1;
+}
