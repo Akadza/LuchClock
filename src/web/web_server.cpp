@@ -248,7 +248,7 @@ void handleSettingsGet(){
   json+=controller().settingsSaved()?"true":"false";
   json+=F(",\"_fields\":[");
   bool first=true;
-#define FIELD(key,label,min,max,scale) if(!first)json+=',';first=false;json+=F("[\"" #key "\",\"" label "\",");json+=String((min)/(scale));json+=',';json+=String((max)/(scale));json+=',';json+=String(scale);json+=']';
+#define FIELD(key,label,min,max,scale) if(!first)json+=',';first=false;json+=F("[\"" #key "\",\"" label "\",");json+=String((double)(min)/(scale),6);json+=',';json+=String((double)(max)/(scale),6);json+=',';json+=String(scale);json+=']';
   PUBLIC_SETTINGS(FIELD)
 #undef FIELD
   json+=F("]}");
