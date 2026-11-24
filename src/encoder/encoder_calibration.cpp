@@ -62,7 +62,7 @@ bool calibrationTimeAllowed(uint8_t& minute){
   time_t now=time(nullptr);
   struct tm local={};
   if(!localtime_r(&now,&local))return false;
-  if((uint32_t)local.tm_sec>=60UL-runtimeSettings.calibrationGuardSec)return false;
+  if((uint32_t)local.tm_sec>=60UL-settingsCurrent().calibrationGuardSec)return false;
   minute=(uint8_t)local.tm_min;
   return true;
 }
