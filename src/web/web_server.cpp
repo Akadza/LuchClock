@@ -120,7 +120,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.11\",");
+  json += F("\"version\":\"1.12\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -149,6 +149,7 @@ void handleStatus() {
   json += String(encoderMinutes());
   json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
   json += F(",\"calibration_offset\":");json += String(calibrationOffset());
+  json += F(",\"calibration_signed_offset\":");json += String((int)calibrationSignedOffset());
 
   json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
   json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
@@ -433,27 +434,21 @@ void handleSettingsPost(){
   webAddEvent(operation=="save"?"Настройки сохранены":"Настройки применены временно");
   server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
 }
-static bool calibrationAllowed(){
-  return currentMode=="manual" && motorState()==MOTOR_STOPPED &&
+static bool calibrationReady(){
+  return (currentMode=="manual" || currentMode=="off") && motorState()==MOTOR_STOPPED &&
     !modeTransition && !motorAutoFault() && encoderValid() && timeIsFresh();
 }
-static bool calibrationTimeAllowed(uint8_t& minute){
-  time_t now=time(nullptr);
-  struct tm local={};
-  if(!localtime_r(&now,&local))return false;
-  const uint32_t guard=runtimeSettings.calibrationGuardSec;
-  if((uint32_t)local.tm_sec<guard || (uint32_t)local.tm_sec>=60UL-guard)return false;
-  minute=(uint8_t)local.tm_min;
-  return true;
+static bool calibrationAllowed(){
+  uint8_t minute=0;
+  return calibrationReady() && calibrationTimeAllowed(minute);
 }
 void handleCalibration(){
-  if(!calibrationAllowed()){
-    server.send(409,"text/plain; charset=utf-8","Нужен ручной режим, остановленный двигатель, исправный энкодер и актуальный NTP");return;
+  if(!calibrationReady()){
+    server.send(409,"text/plain; charset=utf-8","Калибровка недоступна");return;
   }
   uint8_t minute=0;
   if(!calibrationTimeAllowed(minute)){
-    const unsigned guard=runtimeSettings.calibrationGuardSec;
-    server.send(409,"text/plain; charset=utf-8",String("Калибровка разрешена с ")+guard+" по "+(59U-guard)+" секунду");return;
+    server.send(409,"text/plain","");return;
   }
   if(!calibrationSave(minute,encoderRawPosition())){
     server.send(500,"text/plain; charset=utf-8","Не удалось сохранить калибровку");return;
@@ -502,7 +497,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.11 started");
+  Serial.println("[WEB] HTTP server v1.12 started");
 }
 
 void webLoop() {
