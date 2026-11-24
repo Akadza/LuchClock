@@ -1,10 +1,11 @@
 #include "event_logger.h"
+#include "../../config.h"
 #include "../system_settings.h"
 #include "../network/time_manager.h"
 static EventEntry events[MAX_LOG_ENTRIES];
 static unsigned int eventCount = 0;
 
-void eventAdd(const String& message) {
+void eventAdd(const String& message,const char* code,const char* level) {
   if (eventCount >= MAX_LOG_ENTRIES) {
     for (unsigned int i = 1; i < eventCount; i++) {
       events[i - 1] = events[i];
@@ -18,6 +19,7 @@ void eventAdd(const String& message) {
   entry.uptimeSeconds = millis() / 1000UL;
   entry.timestamp = timeIsValid() ? time(nullptr) : 0;
   entry.message = message;
+  entry.code=code;entry.level=level;
 
   eventCount++;
 }
