@@ -60,7 +60,8 @@ struct RuntimeSettings {
   uint32_t encoderStableSamples;
   uint32_t ntpRequestSec;
 };
-extern RuntimeSettings runtimeSettings;
+const RuntimeSettings& settingsCurrent();
+bool settingsChange(const RuntimeSettings& next,bool save);
 void settingsSetup();
 bool settingsSave();
 bool settingsPersistedMatches();
