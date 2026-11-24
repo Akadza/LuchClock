@@ -12,6 +12,7 @@
 #include "src/encoder/encoder_calibration.h"
 
 void setup() {
+  motorSetup(); // Safe output before serial and delays.
   Serial.begin(115200);
   delay(100);
 
@@ -20,7 +21,6 @@ void setup() {
   Serial.println("LuchClock v" FIRMWARE_VERSION);
   Serial.println("==================");
 
-  motorSetup(); // Сначала гарантируем LOW на D5.
   settingsSetup(); // Загрузка параметров из EEPROM.
   calibrationSetup(); // Загрузка сохранённого смещения энкодера.
   encoderSetup();
