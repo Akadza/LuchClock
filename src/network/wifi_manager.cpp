@@ -102,7 +102,7 @@ void wifiLoop() {
   }
 
   if (!connected &&
-      millis() - lastReconnectAttempt >= runtimeSettings.wifiReconnectMs) {
+      millis() - lastReconnectAttempt >= settingsCurrent().wifiReconnectMs) {
 
     lastReconnectAttempt = millis();
 
@@ -113,7 +113,7 @@ void wifiLoop() {
   // Подробная диагностика каждые 15 секунд,
   // только пока соединение отсутствует.
   if (!connected &&
-      millis() - lastDiagnostic >= runtimeSettings.wifiDiagnosticMs) {
+      millis() - lastDiagnostic >= settingsCurrent().wifiDiagnosticMs) {
 
     lastDiagnostic = millis();
     printWifiDiagnostics();
