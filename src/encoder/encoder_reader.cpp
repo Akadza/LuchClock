@@ -56,7 +56,7 @@ void encoderSetup() {
 void encoderLoop() {
   const unsigned long now = millis();
   if (!encoderAddress) {
-    if (now - encoderLastProbe >= settingsCurrent().encoderProbeMs) {
+    if (now - encoderLastProbe >= DEFAULT_ENCODER_PROBE_MS) {
       encoderLastProbe = now;
       encoderFindDevice();
     }
