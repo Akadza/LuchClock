@@ -32,7 +32,7 @@ const char* motorStateText(){
 unsigned long motorRunElapsedMs(){return state==MOTOR_FORWARD ? millis()-runStarted : 0;}
 unsigned long motorManualPauseRemainingMs(){
   if(!manualPaused)return 0;
-  const unsigned long duration=runtimeSettings.manualPauseSec*1000UL;
+  const unsigned long duration=settingsCurrent().manualPauseSec*1000UL;
   const unsigned long elapsed=millis()-manualPausedAt;
   return elapsed>=duration?0:duration-elapsed;
 }
@@ -77,7 +77,7 @@ void motorLoop(){
     // Encoder movement must be observed during motor operation.
     if(encoderRawPosition()!=lastPosition){
       lastPosition=encoderRawPosition();lastMovementAt=millis();
-    }else if(millis()-lastMovementAt>=runtimeSettings.noMotionWarnSec*1000UL){
+    }else if(millis()-lastMovementAt>=settingsCurrent().noMotionWarnSec*1000UL){
       digitalWrite(MOTOR_OUTPUT_PIN,LOW);
       lastRunMs=millis()-runStarted;
       state=MOTOR_FAULT;autoFault=true;faultReason="no_motion";
@@ -85,7 +85,7 @@ void motorLoop(){
     }
   }
   if(state==MOTOR_FORWARD){
-    const unsigned long limit=(autoMode?runtimeSettings.autoLimitSec:runtimeSettings.manualLimitSec)*1000UL;
+    const unsigned long limit=(autoMode?settingsCurrent().autoLimitSec:settingsCurrent().manualLimitSec)*1000UL;
     if(millis()-runStarted>=limit){
       digitalWrite(MOTOR_OUTPUT_PIN,LOW);
       lastRunMs=millis()-runStarted;
