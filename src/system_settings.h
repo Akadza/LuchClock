@@ -67,3 +67,16 @@ bool settingsSave();
 bool settingsPersistedMatches();
 bool settingsValidate(const RuntimeSettings& value);
 void settingsDefaults(RuntimeSettings& value);
+
+// Публичные настройки: ключ, подпись, пределы в внутренних единицах, масштаб UI.
+#define PUBLIC_SETTINGS(X) \
+ X(manualLimitSec,"Лимит ручного режима, сек",MIN_MOTOR_LIMIT_SEC,MAX_MOTOR_LIMIT_SEC,1) \
+ X(autoLimitSec,"Лимит авторежима, сек",MIN_MOTOR_LIMIT_SEC,MAX_MOTOR_LIMIT_SEC,1) \
+ X(manualPauseSec,"Пауза после ручного лимита, сек",MIN_MANUAL_PAUSE_SEC,MAX_MANUAL_PAUSE_SEC,1) \
+ X(calibrationGuardSec,"Запрет калибровки перед сменой минуты, сек",0,MAX_CALIBRATION_GUARD_SEC,1) \
+ X(noMotionWarnSec,"Аварийная остановка без движения энкодера, сек",MIN_NO_MOTION_WARN_SEC,MAX_NO_MOTION_WARN_SEC,1) \
+ X(autoStepMin,"Интервал автоматической коррекции, мин",MIN_AUTO_STEP_MIN,MAX_AUTO_STEP_MIN,1) \
+ X(wifiReconnectMs,"Повтор подключения Wi-Fi, сек",MIN_WIFI_RECONNECT_MS,MAX_WIFI_RECONNECT_MS,1000) \
+ X(ntpStaleSec,"Допустимое время без синхронизации NTP, сек",MIN_NTP_STALE_SEC,MAX_NTP_STALE_SEC,1) \
+ X(encoderPollMs,"Опрос энкодера, мс",MIN_ENCODER_POLL_MS,MAX_ENCODER_POLL_MS,1) \
+ X(encoderStableSamples,"Подтверждающие чтения энкодера",MIN_ENCODER_STABLE_SAMPLES,MAX_ENCODER_STABLE_SAMPLES,1)
