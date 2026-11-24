@@ -340,15 +340,7 @@ body.modal-open{overflow:hidden}
     <div class="info" id="commandInfo">
       Тестовый выход D5 / GPIO14: вперёд — 3,3 В, стоп — 0 В.
     </div>
-    <div class="calibration-box">
-      <div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div>
-      <p class="calibration-help">Установите минутную стрелку на текущее время NTP и нажмите «Авто». Калибровка не двигает двигатель.</p>
-      <div class="calibration-actions">
-        <button id="calibrationAutoBtn" onclick="previewCalibration()">Авто</button>
-        <button id="calibrationSaveBtn" class="save-button" onclick="saveCalibration()" disabled>Сохранить калибровку</button>
-      </div>
-      <small id="calibrationMessage"></small>
-    </div>
+    
   </div>
   </div>
   <div id="faultActions" hidden class="fault-actions"><button id="resetFaultBtn" class="fault-reset" onclick="resetFault()">Сбросить аварию</button></div>
@@ -390,14 +382,14 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.9 · Тестовый режим ·
+  LuchClock v1.10 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
 <div id="settingsModal" class="settings-overlay" hidden onclick="if(event.target===this)toggleSettings()">
  <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
-  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div></div></div>
+  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Требуется ручной режим и остановленный двигатель.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
   <div class="settings-footer"><small id="settingsMessage"></small><div><button id="applySettingsBtn" onclick="submitSettings('apply')" disabled>Применить</button> <button id="saveSettingsBtn" class="save-button" onclick="submitSettings('save')" disabled>Сохранить</button></div></div>
  </section>
 </div>
@@ -438,14 +430,8 @@ function text(id, value, css) {
 function renderStatus(s) {
   text('deviceName',s.device || 'LuchClock1');
   const calAllowed=s.mode==='manual' && s.motor_state==='stopped' && !s.mode_transition && !s.auto_fault && s.encoder_valid && s.ntp_recent;
-  $('calibrationAutoBtn').disabled=!calAllowed || calibrationBusy;
-  $('calibrationSaveBtn').disabled=!calAllowed || calibrationBusy || !calibrationPending;
+  $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
   text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_offset:'Не откалиброван');
-  if(calibrationPending && (calibrationPreviewPosition!==s.encoder_position || Date.now()-calibrationPreviewAt>20000 || Number((s.time_local||"").slice(-5,-3))!==calibrationPreviewMinute)){
-    calibrationPending=false;
-    $('calibrationSaveBtn').disabled=true;
-    text('calibrationMessage','Расчёт устарел или энкодер повернулся. Повторите «Авто».');
-  }
   if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
   text(
@@ -549,7 +535,6 @@ function renderStatus(s) {
 }
 
 function showMode(mode) {
-  if(mode!=='manual'){calibrationPending=false;text('calibrationMessage','');}
   currentMode = mode;
   $('offBtn').classList.toggle('active', mode === 'off');
   $('autoBtn').classList.toggle('active', mode === 'auto');
@@ -766,6 +751,7 @@ function updateSettingsButtons(){
 function toggleSettings(){
   const p=$('settingsModal');
   settingsOpenGeneration++;
+  text('calibrationMessage','');
   if(p.hidden){
     p.hidden=false;document.body.classList.add('modal-open');
     settingsLoaded=false;
@@ -827,30 +813,12 @@ async function submitSettings(operation){
   finally{settingsBusy=false;updateSettingsButtons();}
 }
 let calibrationBusy=false;
-let calibrationPending=false;
-let calibrationPreviewPosition=-1;
-let calibrationPreviewAt=0;
-let calibrationPreviewMinute=-1;
-async function previewCalibration(){
-  if(calibrationBusy)return;
-  calibrationBusy=true;calibrationPending=false;
+async function runCalibration(){
+  if(calibrationBusy || $('calibrationBtn').disabled)return;
+  calibrationBusy=true;$('calibrationBtn').disabled=true;
   try{
-    const response=await fetch('/api/calibration/preview',{method:'POST'});
+    const response=await fetch('/api/calibration',{method:'POST'});
     if(!response.ok)throw Error(await response.text());
-    const data=await response.json();
-    calibrationPending=true;calibrationPreviewPosition=data.position;
-    calibrationPreviewAt=Date.now();calibrationPreviewMinute=data.minute;
-    text('calibrationMessage','NTP: '+String(data.minute).padStart(2,'0')+' мин · позиция '+data.position+' · смещение '+data.offset+'. Проверьте и сохраните.');
-  }catch(e){text('calibrationMessage',e.message)}
-  finally{calibrationBusy=false;await refresh();}
-}
-async function saveCalibration(){
-  if(calibrationBusy || !calibrationPending)return;
-  calibrationBusy=true;
-  try{
-    const response=await fetch('/api/calibration/save',{method:'POST'});
-    if(!response.ok)throw Error(await response.text());
-    calibrationPending=false;
     text('calibrationMessage','Калибровка сохранена во flash.');
     loadLog();
   }catch(e){text('calibrationMessage',e.message)}
