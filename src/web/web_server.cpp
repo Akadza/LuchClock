@@ -172,11 +172,12 @@ void handleStatus() {
 }
 
 static void sendResult(CommandResult r){
- if(r.status==200)server.send(200,"application/json","{\"ok\":true}");
- else {String json=F("{\"ok\":false,\"code\":\"");json+=r.status==400?"INVALID_REQUEST":r.status==409?"OPERATION_BLOCKED":"INTERNAL_ERROR";json+=F("\",\"message\":\"");json+=jsonEscape(r.message);json+=F("\"}");server.send(r.status,"application/json; charset=utf-8",json);}
+ const int status=r.code==ResultCode::Ok?200:r.code==ResultCode::Invalid?400:r.code==ResultCode::Blocked?409:500;
+ if(status==200)server.send(200,"application/json","{\"ok\":true}");
+ else {String json=F("{\"ok\":false,\"code\":\"");json+=status==400?"INVALID_REQUEST":status==409?"OPERATION_BLOCKED":"INTERNAL_ERROR";json+=F("\",\"message\":\"");json+=jsonEscape(r.message);json+=F("\"}");server.send(status,"application/json; charset=utf-8",json);}
 }
-void handleMode(){if(!server.hasArg("value")){sendResult({400,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
-void handleCommand(){if(!server.hasArg("action")){sendResult({400,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
+void handleMode(){if(!server.hasArg("value")){sendResult({ResultCode::Invalid,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
+void handleCommand(){if(!server.hasArg("action")){sendResult({ResultCode::Invalid,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
 void handleEvents() {
   String json;
   json.reserve(100 + eventSize() * 150);
@@ -256,22 +257,14 @@ void handleSettingsGet(){
 }
 void handleSettingsPost(){
   RuntimeSettings next=controller().settings();
-  if(!readSetting("manualLimitSec",next.manualLimitSec) ||
-     !readSetting("autoLimitSec",next.autoLimitSec) ||
-     !readSetting("manualPauseSec",next.manualPauseSec) ||
-     !readSetting("calibrationGuardSec",next.calibrationGuardSec) ||
-     !readSetting("noMotionWarnSec",next.noMotionWarnSec) ||
-     !readSetting("autoStepMin",next.autoStepMin) ||
-     !readSetting("wifiReconnectMs",next.wifiReconnectMs) ||
-     !readSetting("ntpStaleSec",next.ntpStaleSec) ||
-     !readSetting("encoderPollMs",next.encoderPollMs) ||
-     !readSetting("encoderStableSamples",next.encoderStableSamples)){
-    sendResult({400,"Некорректные параметры"});
-    return;
-  }
+  bool valid=true;
+#define READ_FIELD(key,label,min,max,scale) if(!readSetting(#key,next.key))valid=false;
+  PUBLIC_SETTINGS(READ_FIELD)
+#undef READ_FIELD
+  if(!valid){sendResult({ResultCode::Invalid,"Некорректные параметры"});return;}
   const String operation=server.arg("operation");
   if(operation!="apply" && operation!="save"){
-    sendResult({400,"Invalid operation"});return;
+    sendResult({ResultCode::Invalid,"Invalid operation"});return;
   }
   sendResult(controller().changeSettings(next,operation=="save"));
 }
