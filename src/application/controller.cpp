@@ -2,10 +2,8 @@
 #include <ESP8266WiFi.h>
 #include "../../config.h"
 #include "event_logger.h"
-#include "../motor/motor_controller.h"
-#include "../encoder/encoder_reader.h"
+#include "hardware.h"
 #include "../encoder/encoder_calibration.h"
-#include "../network/time_manager.h"
 static String currentMode = "off";
 static bool manualMode = false;
 static unsigned long modeChangedAt = 0;
@@ -20,16 +18,16 @@ static unsigned long modeWaitRemainingMs() {
   return elapsed >= DEFAULT_MODE_DELAY_MS ? 0 : DEFAULT_MODE_DELAY_MS - elapsed;
 }
 static bool modeIsReady() {
-  return !modeTransition && motorState() == MOTOR_STOPPED;
+  return !modeTransition && motor().motorState() == MOTOR_STOPPED;
 }
 
 
 
 static bool calibrationReady(){
- return (currentMode=="manual" || currentMode=="off") && motorState()==MOTOR_STOPPED && !modeTransition && !motorAutoFault() && encoderValid() && timeIsFresh();
+ return (currentMode=="manual" || currentMode=="off") && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderValid() && clockTime().timeIsFresh();
 }
 static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibrationTimeAllowed(minute);}
-static bool settingsAllowed(){return currentMode!="auto" && motorState()==MOTOR_STOPPED && !modeTransition;}
+static bool settingsAllowed(){return currentMode!="auto" && motor().motorState()==MOTOR_STOPPED && !modeTransition;}
 class Controller final:public IController {
 public:
  ControllerState snapshot() const override {
@@ -38,28 +36,28 @@ public:
  s.device=DEVICE_NAME;
  s.wifi=WiFi.status() == WL_CONNECTED;
  s.ip=WiFi.localIP().toString();
- s.encoderConnected=encoderConnected();
- s.encoderValid=encoderValid();
- s.encoderAddress=encoderAddress;
- s.encoderRaw=encoderRaw;
- s.encoderPosition=encoderCalibratedPosition();
- s.encoderRawPosition=encoderRawPosition();
- s.encoderMinutes=encoderMinutes();
+ s.encoderConnected=encoder().encoderConnected();
+ s.encoderValid=encoder().encoderValid();
+ s.encoder().address()=encoder().address();
+ s.encoder().raw()=encoder().raw();
+ s.encoderPosition=encoder().encoderCalibratedPosition();
+ s.encoderRawPosition=encoder().encoderRawPosition();
+ s.encoderMinutes=encoder().encoderMinutes();
  s.calibrationSaved=calibrationSaved();
  s.calibrationOffset=calibrationOffset();
  s.calibrationSignedOffset=(int)calibrationSignedOffset();
- s.motorRun=motorRunElapsedMs();
- s.manualPause=motorManualPauseRemainingMs();
- s.fault=motorAutoFault();
- s.faultReason=motorFaultReason();
+ s.motorRun=motor().motorRunElapsedMs();
+ s.manualPause=motor().motorManualPauseRemainingMs();
+ s.fault=motor().motorAutoFault();
+ s.faultReason=motor().motorFaultReason();
  s.uptime=millis() / 1000UL;
- s.ntpSynced=timeIsValid();
- s.ntpRecent=timeIsFresh();
- s.localTime=timeLocalString();
- s.lastSync=timeLastSyncString();
- s.ntpAge=(long)timeSyncAgeSeconds();
- s.motorState=motorStateText();
- s.motorWait=motorWaitRemainingMs();
+ s.ntpSynced=clockTime().timeIsValid();
+ s.ntpRecent=clockTime().timeIsFresh();
+ s.localTime=clockTime().timeLocalString();
+ s.lastSync=clockTime().timeLastSyncString();
+ s.ntpAge=(long)clockTime().timeSyncAgeSeconds();
+ s.motorState=motor().motorStateText();
+ s.motorWait=motor().motorWaitRemainingMs();
  s.modeWaitTotal=DEFAULT_MODE_DELAY_MS;
  s.motorWaitTotal=DEFAULT_MOTOR_STOP_DELAY_MS;
  return s;
@@ -67,38 +65,38 @@ public:
  RuntimeSettings settings() const override {return runtimeSettings;}
  bool settingsSaved() const override {return settingsPersistedMatches();}
  ModeState state() const override {
- return {currentMode,manualMode,modeTransition,currentMode=="auto" && autoReady && modeIsReady() && !motorAutoFault(),
- manualMode && modeIsReady() && motorCanForward(),manualMode && modeIsReady() && motorCanReverse(),
- manualMode && (motorState()==MOTOR_FORWARD || motorState()==MOTOR_REVERSE),
- encoderValid() && motorManualPauseRemainingMs()==0 && motorState()==MOTOR_STOPPED && !modeTransition && !motorAutoFault(),
+ return {currentMode,manualMode,modeTransition,currentMode=="auto" && autoReady && modeIsReady() && !motor().motorAutoFault(),
+ manualMode && modeIsReady() && motor().motorCanForward(),manualMode && modeIsReady() && motor().motorCanReverse(),
+ manualMode && (motor().motorState()==MOTOR_FORWARD || motor().motorState()==MOTOR_REVERSE),
+ encoder().encoderValid() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
  calibrationAllowed(),settingsAllowed(),modeWaitRemainingMs(),(manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL};
  }
  CommandResult setMode(const String& mode) override {
   if(mode==currentMode)return {200,""};
-  if (mode != "off" && !encoderValid()) {
+  if (mode != "off" && !encoder().encoderValid()) {
     return {409,"Энкодер не подключён: доступен только режим Выключен"};
   }
 
-  if (mode == "auto" && motorManualPauseRemainingMs()>0) {
+  if (mode == "auto" && motor().motorManualPauseRemainingMs()>0) {
     return {409,"Во время паузы после лимита автоматический режим запрещён"};
   }
-  if (mode != "off" && motorAutoFault()) {
+  if (mode != "off" && motor().motorAutoFault()) {
     return {409,"Сначала сбросьте аварию в выключенном режиме"};
   }
   if (mode == "off") {
-    motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
-    motorSetAutoMode(false);
+    motor().motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
+    motor().motorSetAutoMode(false);
     eventAdd("Режим выключен");
   } else if (mode == "manual") {
     // Запрет переключения во время защитной паузы действует и на API.
-    if (!manualMode && (modeTransition || motorState() != MOTOR_STOPPED)) {
+    if (!manualMode && (modeTransition || motor().motorState() != MOTOR_STOPPED)) {
       return {409,"Дождитесь завершения защитной паузы и остановки привода"};
     }
     if (currentMode != "manual") {
-      motorStop();
+      motor().motorStop();
       manualMode = true;
       currentMode = "manual";
-      motorSetAutoMode(false);
+      motor().motorSetAutoMode(false);
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
@@ -106,14 +104,14 @@ public:
       Serial.println("[MODE] Manual");
     }
   } else if (mode == "auto") {
-    if (currentMode != "auto" && (motorState() != MOTOR_STOPPED || modeTransition)) {
+    if (currentMode != "auto" && (motor().motorState() != MOTOR_STOPPED || modeTransition)) {
       return {409,"Сначала остановите привод и дождитесь завершения паузы"};
     }
     if (currentMode != "auto") {
-      motorStop();
+      motor().motorStop();
       manualMode = false;
       currentMode = "auto";
-      motorSetAutoMode(true);
+      motor().motorSetAutoMode(true);
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
@@ -134,13 +132,13 @@ return {200,""};}
     return {400,"Invalid action"};
   }
 
-  if (action == "stop" && motorState()!=MOTOR_FORWARD && motorState()!=MOTOR_REVERSE) {
+  if (action == "stop" && motor().motorState()!=MOTOR_FORWARD && motor().motorState()!=MOTOR_REVERSE) {
     return {409,"Двигатель уже остановлен"};
   }
-  if (action != "stop" && (!modeIsReady() || !encoderValid())) {
+  if (action != "stop" && (!modeIsReady() || !encoder().encoderValid())) {
     return {409,"Mode transition or motor cooldown active"};
   }
-  if (!motorCommand(action)) {
+  if (!motor().motorCommand(action)) {
     return {409,"Motor command rejected (fault or invalid state)"};
   }
 
@@ -149,11 +147,11 @@ return {200,""};}
  CommandResult calibrate() override {
  if(!calibrationReady())return {409,"Калибровка недоступна"};
  uint8_t minute=0;if(!calibrationTimeAllowed(minute))return {409,""};
- if(!calibrationSave(minute,encoderRawPosition()))return {500,"Не удалось сохранить калибровку"};
+ if(!calibrationSave(minute,encoder().encoderRawPosition()))return {500,"Не удалось сохранить калибровку"};
  eventAdd("Калибровка энкодера сохранена");return {200,""};
  }
  CommandResult resetFault() override {
- if(currentMode!="off" || !encoderValid() || !motorResetAutoFault())return {409,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
+ if(currentMode!="off" || !encoder().encoderValid() || !motor().motorResetAutoFault())return {409,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
  eventAdd("Авария сброшена оператором");return {200,""};
  }
  CommandResult changeSettings(const RuntimeSettings& next,bool save) override {
@@ -169,7 +167,7 @@ IController& controller(){return instance;}
 void controllerSetup(){
   manualMode = false;
   currentMode = "off";
-  motorSetAutoMode(false);
+  motor().motorSetAutoMode(false);
   modeTransition = false;
   autoReady = false;
   eventReset();
@@ -180,35 +178,35 @@ void controllerSetup(){
 
 }
 void controllerLoop(){
-  const bool encoderNowValid=encoderValid();
+  const bool encoderNowValid=encoder().encoderValid();
   if (!encoderNowValid && currentMode!="off") {
     // При потере датчика во время движения motorLoop уже фиксирует аварию.
     // Режим OFF сохраняет аварийную блокировку до ручного сброса.
-    motorStop();currentMode="off";manualMode=false;autoReady=false;
-    modeTransition=false;motorSetAutoMode(false);
+    motor().motorStop();currentMode="off";manualMode=false;autoReady=false;
+    modeTransition=false;motor().motorSetAutoMode(false);
     eventAdd("Энкодер недоступен: переход в Выключен");
   }
-  const bool fault=motorAutoFault();
+  const bool fault=motor().motorAutoFault();
   if(fault && !previousAutoFault){
-    String reason=motorFaultReason();
+    String reason=motor().motorFaultReason();
     eventAdd(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
       reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
       "Критическая ошибка: привод заблокирован");
   }
   if(fault && currentMode!="off"){
-    motorStop();currentMode="off";manualMode=false;autoReady=false;
-    modeTransition=false;motorSetAutoMode(false);
+    motor().motorStop();currentMode="off";manualMode=false;autoReady=false;
+    modeTransition=false;motor().motorSetAutoMode(false);
     eventAdd("Аварийный переход в Выключен");
   }
   previousAutoFault=fault;
-  const unsigned long manualPause=motorManualPauseRemainingMs();
+  const unsigned long manualPause=motor().motorManualPauseRemainingMs();
   if(manualPause && !previousManualPause)eventAdd("Достигнут лимит ручной работы: защитная пауза");
   previousManualPause=manualPause;
-  if (modeTransition && motorState() != MOTOR_WAITING &&
-      (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
+  if (modeTransition && motor().motorState() != MOTOR_WAITING &&
+      (modeWaitRemainingMs() == 0 || motor().motorState() == MOTOR_FAULT)) {
     modeTransition = false;
     if (currentMode=="auto") {
-      autoReady = (motorState() == MOTOR_STOPPED);
+      autoReady = (motor().motorState() == MOTOR_STOPPED);
       Serial.println(autoReady ? "[MODE] Auto ready" : "[MODE] Auto not ready");
     } else {
       Serial.println(F("[MODE] Manual controls unlocked"));
