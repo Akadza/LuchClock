@@ -382,7 +382,7 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.13 · Тестовый режим ·
+  LuchClock v1.14 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
@@ -400,6 +400,8 @@ let currentMode = 'off';
 let modeRequestPending = false;
 let lastLogSignature = '';
 let refreshPending = false;
+let logPending=false;
+let settingsLoading=false;
 let commandPending = false;
 let lastMotorState = 'stopped';
 let motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
@@ -595,7 +597,7 @@ function updateManualButtons(state, remaining) {
   else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'движется вперёд',reverse:'движется назад'}[state] || 'состояние неизвестно'));
 }
 async function refresh() {
-  if (refreshPending) return;
+  if (refreshPending || settingsLoading) return;
   refreshPending = true;
   try {
     const response = await fetch('/api/status', {cache:'no-store'});
@@ -637,7 +639,6 @@ async function setMode(mode) {
   $('manualBtn').disabled = true;
   try {
     await post('/api/mode?value=' + mode);
-    await refresh();
     loadLog();
   } catch (e) {
     showMode(previous);
@@ -667,7 +668,6 @@ async function sendMotorCommand(action) {
   updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
-    await refresh();
   } catch (e) {
     pendingAction = '';
     alert(e.message);
@@ -683,6 +683,8 @@ async function sendMotorCommand(action) {
 }
 
 async function loadLog() {
+  if(logPending || settingsLoading)return;
+  logPending=true;
   try {
     const response = await fetch('/api/events', {cache:'no-store'});
     if (!response.ok) throw Error();
@@ -719,7 +721,7 @@ async function loadLog() {
     }
   } catch (e) {
     text('log', 'Не удалось получить журнал');
-  }
+  } finally {logPending=false;}
 }
 
 
@@ -746,7 +748,7 @@ function currentSettings(){const result={};for(const [key] of settingFields)resu
 function updateSettingsButtons(){
   if(!settingsLoaded)return;
   const changed=JSON.stringify(currentSettings())!==JSON.stringify(appliedSettings);
-  const blocked=settingsBusy || !lastStatus || lastStatus.mode==='auto' || lastStatus.motor_state!=='stopped' || !!lastStatus.mode_transition;
+  const blocked=settingsBusy || !lastStatus || !lastStatus.settings_allowed;
   $('applySettingsBtn').disabled=blocked || !changed;
   $('saveSettingsBtn').disabled=blocked || (!changed && savedSettings);
 }
@@ -768,6 +770,7 @@ function toggleSettings(){
 }
 async function loadSettings(){
   const generation=settingsOpenGeneration;
+  settingsLoading=true;
   try{
     const response=await fetch('/api/settings',{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
@@ -787,6 +790,7 @@ async function loadSettings(){
     text('settingsMessage','');
     updateSettingsButtons();
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
+  finally{settingsLoading=false;}
 }
 async function submitSettings(operation){
   if(!settingsLoaded || settingsBusy)return;
@@ -834,7 +838,7 @@ async function resetFault(){
 
 refresh();
 loadLog();
-setInterval(refresh, 250);
+setInterval(()=>{if(!modeRequestPending && !commandPending && !settingsBusy && !calibrationBusy)refresh();}, 400);
 setInterval(() => {
   if (!lastStatus) return;
   const elapsed = Date.now() - lastStatusAt;
@@ -849,7 +853,7 @@ setInterval(() => {
     else text('commandInfo', 'Переключение режима · пауза ' + (remaining / 1000).toFixed(1) + ' с');
   }
 }, 100);
-setInterval(loadLog, 10000);
+setInterval(()=>{if(!refreshPending && !modeRequestPending && !commandPending && !settingsBusy && !calibrationBusy)loadLog();}, 10000);
 </script>
 </body>
 </html>
