@@ -113,7 +113,7 @@ void wifiLoop() {
   // Подробная диагностика каждые 15 секунд,
   // только пока соединение отсутствует.
   if (!connected &&
-      millis() - lastDiagnostic >= settingsCurrent().wifiDiagnosticMs) {
+      millis() - lastDiagnostic >= DEFAULT_WIFI_DIAGNOSTIC_MS) {
 
     lastDiagnostic = millis();
     printWifiDiagnostics();
