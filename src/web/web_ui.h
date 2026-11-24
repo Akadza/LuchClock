@@ -389,7 +389,7 @@ body.modal-open{overflow:hidden}
 <div id="settingsModal" class="settings-overlay" hidden onclick="if(event.target===this)toggleSettings()">
  <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
-  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Доступно в выключенном и ручном режимах при остановленном двигателе. Перед сменой минуты кнопка временно блокируется.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
+  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — до перезапуска, «Сохранить» — с сохранением после перезапуска. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Доступно в выключенном и ручном режимах при остановленном двигателе. Перед сменой минуты кнопка временно блокируется.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
   <div class="settings-footer"><small id="settingsMessage"></small><div><button id="applySettingsBtn" onclick="submitSettings('apply')" disabled>Применить</button> <button id="saveSettingsBtn" class="save-button" onclick="submitSettings('save')" disabled>Сохранить</button></div></div>
  </section>
 </div>
@@ -727,20 +727,7 @@ async function loadLog() {
 }
 
 
-const settingFields=[
- ['manualLimitSec','Лимит ручного режима, сек',1,900],
- ['autoLimitSec','Лимит авторежима, сек',1,900],
- ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
- ['calibrationGuardSec','Запрет калибровки перед сменой минуты, сек',0,29],
- ['noMotionWarnSec','Аварийная остановка без движения энкодера, сек',1,900],
- ['autoStepMin','Шаг синхронизации, мин',1,10],
- ['wifiReconnectMs','Повтор Wi-Fi, мс',1000,300000],
- ['wifiDiagnosticMs','Диагностика Wi-Fi, мс',1000,300000],
- ['ntpStaleSec','Устаревание NTP, сек',60,86400],
- ['encoderPollMs','Опрос энкодера, мс',5,100],
- ['encoderProbeMs','Повтор поиска PCF8574, мс',250,10000],
- ['encoderStableSamples','Подтверждающих чтений энкодера',2,5]
-];
+let settingFields=[];
 let settingsLoaded=false;
 let appliedSettings=null;
 let savedSettings=false;
@@ -778,12 +765,13 @@ async function loadSettings(){
     if(!response.ok)throw Error('HTTP '+response.status);
     const data=await response.json();
     if(generation!==settingsOpenGeneration || $('settingsModal').hidden)return;
+    settingFields=data._fields;
     const root=$('settingsFields');root.replaceChildren();
-    for(const [key,label,min,max] of settingFields){
+    for(const [key,label,min,max,scale] of settingFields){
       const item=document.createElement('label');item.className='diag-item';
       const title=document.createElement('div');title.className='label';title.textContent=label;
       const input=document.createElement('input');input.type='number';input.id='setting_'+key;
-      input.min=min;input.max=max;input.step=1;input.value=data[key];
+      input.min=min;input.max=max;input.step=1;input.value=data[key]/scale;
       input.style.cssText='width:100%;background:#111720;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px';
       input.addEventListener('input',updateSettingsButtons);
       item.append(title,input);root.appendChild(item);
@@ -799,13 +787,13 @@ async function submitSettings(operation){
   updateSettingsButtons();
   if($(operation==='save'?'saveSettingsBtn':'applySettingsBtn').disabled)return;
   const args=new URLSearchParams();
-  for(const [key,label,min,max] of settingFields){
+  for(const [key,label,min,max,scale] of settingFields){
     const raw=$('setting_'+key).value;
     const n=Number(raw);
     if(!/^\d+$/.test(raw)||!Number.isInteger(n)||n<min||n>max){
       text('settingsMessage','Проверьте: '+label);return;
     }
-    args.set(key,raw);
+    args.set(key,String(n*scale));
   }
   args.set('operation',operation);
   settingsBusy=true;updateSettingsButtons();
@@ -816,7 +804,7 @@ async function submitSettings(operation){
     savedSettings=operation==='save';
     await refresh();loadLog();
     await loadSettings();
-    text('settingsMessage',operation==='save'?'Сохранено во flash':'Применено временно');
+    text('settingsMessage',operation==='save'?'Настройки сохранены':'Применено временно');
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
   finally{settingsBusy=false;updateSettingsButtons();}
 }
