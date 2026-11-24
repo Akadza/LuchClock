@@ -75,8 +75,8 @@ void motorLoop(){
   }
   if(state==MOTOR_FORWARD){
     // Encoder movement must be observed during motor operation.
-    if(encoderPosition!=lastPosition){
-      lastPosition=encoderPosition;lastMovementAt=millis();
+    if(encoderRawPosition()!=lastPosition){
+      lastPosition=encoderRawPosition();lastMovementAt=millis();
     }else if(millis()-lastMovementAt>=runtimeSettings.noMotionWarnSec*1000UL){
       digitalWrite(MOTOR_OUTPUT_PIN,LOW);
       lastRunMs=millis()-runStarted;
@@ -107,7 +107,7 @@ bool motorCommand(const String& action){
   if(action=="stop"){motorStop();return true;}
   if(action!="forward" || !motorCanForward())return false;
   runStarted=millis();lastRunMs=0;state=MOTOR_FORWARD;
-  lastPosition=encoderPosition;lastMovementAt=millis();
+  lastPosition=encoderRawPosition();lastMovementAt=millis();
   digitalWrite(MOTOR_OUTPUT_PIN,HIGH);
   Serial.println(F("[MOTOR] FORWARD"));
   return true;

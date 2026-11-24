@@ -244,8 +244,8 @@ main {max-width:1024px}
  .event > div:first-child {grid-column:1;grid-row:2}
 }
 /* Independent settings dialog with its own scroll; page stays compact. */
-.header-actions{display:flex;align-items:center;gap:10px}
-.gear-button{font-size:24px;width:44px;height:44px;padding:0;line-height:1}
+.header-actions{display:flex;align-items:stretch;gap:10px}
+.header-actions .gear-button{display:flex;align-items:center;justify-content:center;font-size:18px;width:34px;height:auto;min-height:0;padding:0;line-height:1;border-radius:8px;flex:none;align-self:stretch}
 .off-note{font-size:13px;color:var(--muted);margin:6px 0 0;background:none;border:0;padding:0}
 body.modal-open{overflow:hidden}
 .settings-overlay[hidden]{display:none!important}
@@ -269,6 +269,12 @@ body.modal-open{overflow:hidden}
 .fault-actions{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;justify-content:center;z-index:2}
 .fault-reset{font-size:12px;padding:6px 12px;background:#4c3034;border-color:#865155;color:#f1d7d9}
 .fault-reset:hover{background:#624044}
+.calibration-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.calibration-box .between{align-items:center;gap:8px;flex-wrap:wrap}
+.calibration-help{font-size:12px;color:var(--muted);line-height:1.5;margin:8px 0}
+.calibration-actions{display:flex;gap:8px;flex-wrap:wrap}
+.calibration-actions button{font-size:12px;padding:7px 12px}
+#calibrationMessage{display:block;margin-top:8px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -276,7 +282,7 @@ body.modal-open{overflow:hidden}
 <header>
   <div>
     <h1>Башенные часы</h1>
-    <small>LuchClock · ESP8266</small>
+    <small><span id="deviceName">LuchClock1</span> · ESP8266</small>
   </div>
   <div class="header-actions"><span class="pill" id="overall" role="status" aria-live="polite">Загрузка...</span><button id="settingsButton" class="gear-button" title="Настройки" aria-label="Настройки" onclick="toggleSettings()">⚙</button></div>
 </header>
@@ -334,6 +340,7 @@ body.modal-open{overflow:hidden}
     <div class="info" id="commandInfo">
       Тестовый выход D5 / GPIO14: вперёд — 3,3 В, стоп — 0 В.
     </div>
+    
   </div>
   </div>
   <div id="faultActions" hidden class="fault-actions"><button id="resetFaultBtn" class="fault-reset" onclick="resetFault()">Сбросить аварию</button></div>
@@ -358,7 +365,7 @@ body.modal-open{overflow:hidden}
       <div class="value" id="sensorDetail">—</div>
     </div>
     <div class="diag-item">
-      <div class="label">Сырой код / позиция</div>
+      <div class="label">Сырой код / позиция / смещение</div>
       <div class="value" id="magnetDetail">—</div>
     </div>
   </div>
@@ -375,14 +382,14 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.7 · Тестовый режим ·
+  LuchClock v1.14 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
 <div id="settingsModal" class="settings-overlay" hidden onclick="if(event.target===this)toggleSettings()">
  <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
-  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div></div></div>
+  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Доступно в выключенном и ручном режимах при остановленном двигателе. Перед сменой минуты кнопка временно блокируется.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
   <div class="settings-footer"><small id="settingsMessage"></small><div><button id="applySettingsBtn" onclick="submitSettings('apply')" disabled>Применить</button> <button id="saveSettingsBtn" class="save-button" onclick="submitSettings('save')" disabled>Сохранить</button></div></div>
  </section>
 </div>
@@ -393,6 +400,8 @@ let currentMode = 'off';
 let modeRequestPending = false;
 let lastLogSignature = '';
 let refreshPending = false;
+let logPending=false;
+let settingsLoading=false;
 let commandPending = false;
 let lastMotorState = 'stopped';
 let motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
@@ -421,6 +430,11 @@ function text(id, value, css) {
 }
 
 function renderStatus(s) {
+  text('deviceName',s.device || 'LuchClock1');
+  const calAllowed=s.calibration_allowed===true;
+  $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
+  $('calibrationBtn').title=calAllowed?'Откалибровать и сохранить':'Калибровка недоступна';
+  text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_signed_offset:'Не откалиброван');
   if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
   text(
@@ -466,7 +480,7 @@ function renderStatus(s) {
   text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
   text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
   text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position : 'Нет данных', 'value ' + (s.encoder_valid ? 'ok' : 'warn'));
-  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · позиция: ' + s.encoder_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · сырая позиция: ' + s.encoder_raw_position + '/127 · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
@@ -583,7 +597,7 @@ function updateManualButtons(state, remaining) {
   else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'движется вперёд',reverse:'движется назад'}[state] || 'состояние неизвестно'));
 }
 async function refresh() {
-  if (refreshPending) return;
+  if (refreshPending || settingsLoading) return;
   refreshPending = true;
   try {
     const response = await fetch('/api/status', {cache:'no-store'});
@@ -598,6 +612,7 @@ async function refresh() {
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
       statusKnown = false;
+      $('calibrationBtn').disabled=true;
       updateManualButtons(lastMotorState, 0);
     }
   } finally {
@@ -624,7 +639,6 @@ async function setMode(mode) {
   $('manualBtn').disabled = true;
   try {
     await post('/api/mode?value=' + mode);
-    await refresh();
     loadLog();
   } catch (e) {
     showMode(previous);
@@ -654,7 +668,6 @@ async function sendMotorCommand(action) {
   updateManualButtons(lastMotorState, 0);
   try {
     await post('/api/command?action=' + action);
-    await refresh();
   } catch (e) {
     pendingAction = '';
     alert(e.message);
@@ -670,6 +683,8 @@ async function sendMotorCommand(action) {
 }
 
 async function loadLog() {
+  if(logPending || settingsLoading)return;
+  logPending=true;
   try {
     const response = await fetch('/api/events', {cache:'no-store'});
     if (!response.ok) throw Error();
@@ -706,7 +721,7 @@ async function loadLog() {
     }
   } catch (e) {
     text('log', 'Не удалось получить журнал');
-  }
+  } finally {logPending=false;}
 }
 
 
@@ -714,7 +729,7 @@ const settingFields=[
  ['manualLimitSec','Лимит ручного режима, сек',1,900],
  ['autoLimitSec','Лимит авторежима, сек',1,900],
  ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
- ['calibrationGuardSec','Запрет автокалибровки до и после смены минуты, сек',0,29],
+ ['calibrationGuardSec','Запрет калибровки перед сменой минуты, сек',0,29],
  ['noMotionWarnSec','Аварийная остановка без движения энкодера, сек',1,900],
  ['autoStepMin','Шаг синхронизации, мин',1,10],
  ['wifiReconnectMs','Повтор Wi-Fi, мс',1000,300000],
@@ -733,13 +748,14 @@ function currentSettings(){const result={};for(const [key] of settingFields)resu
 function updateSettingsButtons(){
   if(!settingsLoaded)return;
   const changed=JSON.stringify(currentSettings())!==JSON.stringify(appliedSettings);
-  const blocked=settingsBusy || !lastStatus || lastStatus.mode==='auto' || lastStatus.motor_state!=='stopped' || !!lastStatus.mode_transition;
+  const blocked=settingsBusy || !lastStatus || !lastStatus.settings_allowed;
   $('applySettingsBtn').disabled=blocked || !changed;
   $('saveSettingsBtn').disabled=blocked || (!changed && savedSettings);
 }
 function toggleSettings(){
   const p=$('settingsModal');
   settingsOpenGeneration++;
+  text('calibrationMessage','');
   if(p.hidden){
     p.hidden=false;document.body.classList.add('modal-open');
     settingsLoaded=false;
@@ -754,6 +770,7 @@ function toggleSettings(){
 }
 async function loadSettings(){
   const generation=settingsOpenGeneration;
+  settingsLoading=true;
   try{
     const response=await fetch('/api/settings',{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
@@ -773,6 +790,7 @@ async function loadSettings(){
     text('settingsMessage','');
     updateSettingsButtons();
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
+  finally{settingsLoading=false;}
 }
 async function submitSettings(operation){
   if(!settingsLoaded || settingsBusy)return;
@@ -800,6 +818,19 @@ async function submitSettings(operation){
   }catch(e){text('settingsMessage','Ошибка: '+e.message)}
   finally{settingsBusy=false;updateSettingsButtons();}
 }
+let calibrationBusy=false;
+async function runCalibration(){
+  if(calibrationBusy || $('calibrationBtn').disabled)return;
+  calibrationBusy=true;$('calibrationBtn').disabled=true;
+  try{
+    const response=await fetch('/api/calibration',{method:'POST'});
+    if(response.status===409)return;
+    if(!response.ok)throw Error(await response.text());
+    text('calibrationMessage','Калибровка сохранена во flash.');
+    loadLog();
+  }catch(e){text('calibrationMessage',e.message)}
+  finally{calibrationBusy=false;await refresh();}
+}
 async function resetFault(){
   try{await post('/api/reset-fault');await refresh();loadLog()}
   catch(e){alert(e.message)}
@@ -807,7 +838,7 @@ async function resetFault(){
 
 refresh();
 loadLog();
-setInterval(refresh, 250);
+setInterval(()=>{if(!modeRequestPending && !commandPending && !settingsBusy && !calibrationBusy)refresh();}, 400);
 setInterval(() => {
   if (!lastStatus) return;
   const elapsed = Date.now() - lastStatusAt;
@@ -822,7 +853,7 @@ setInterval(() => {
     else text('commandInfo', 'Переключение режима · пауза ' + (remaining / 1000).toFixed(1) + ' с');
   }
 }, 100);
-setInterval(loadLog, 10000);
+setInterval(()=>{if(!refreshPending && !modeRequestPending && !commandPending && !settingsBusy && !calibrationBusy)loadLog();}, 10000);
 </script>
 </body>
 </html>

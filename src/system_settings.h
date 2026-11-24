@@ -6,7 +6,7 @@
 #define DEFAULT_MANUAL_LIMIT_SEC 900UL       // 15 мин
 #define DEFAULT_AUTO_LIMIT_SEC 900UL         // 15 мин
 #define DEFAULT_MANUAL_PAUSE_SEC 15UL        // 15 с после ручного лимита
-#define DEFAULT_CALIBRATION_GUARD_SEC 10UL   // запрет секунд 00..09 и 50..59
+#define DEFAULT_CALIBRATION_GUARD_SEC 10UL   // запрет секунд 50..59 перед сменой минуты
 #define DEFAULT_NO_MOTION_WARN_SEC 300UL     // 5 мин
 #define DEFAULT_AUTO_STEP_MIN 2UL            // каждые 2 мин
 #define DEFAULT_MOTOR_STOP_DELAY_MS 1000UL

@@ -1,0 +1,61 @@
+#include "encoder_calibration.h"
+#include "encoder_reader.h"
+#include "../system_settings.h"
+#include <EEPROM.h>
+#include <time.h>
+#include "../network/time_manager.h"
+
+struct CalibrationRecord {
+  uint32_t magic;
+  uint8_t version;
+  uint8_t offset;
+  uint8_t check;
+  uint8_t reserved;
+};
+static const uint32_t CAL_MAGIC=0x4C43414CUL;
+static const int CAL_EEPROM_OFFSET=80; // Отдельно от настроек (68 байт в v3).
+static uint8_t storedOffset=0;
+static bool storedValid=false;
+static_assert(sizeof(CalibrationRecord)+CAL_EEPROM_OFFSET<=SETTINGS_EEPROM_BYTES,"Calibration exceeds EEPROM");
+
+void calibrationSetup(){
+  CalibrationRecord r={};
+  EEPROM.get(CAL_EEPROM_OFFSET,r);
+  storedValid=(r.magic==CAL_MAGIC && r.version==1 && r.offset<128 &&
+               r.check==(uint8_t)(r.offset ^ 0xA5));
+  storedOffset=storedValid?r.offset:0;
+  Serial.printf("[CAL] %s, offset=%u\n",storedValid?"saved":"not calibrated",storedOffset);
+}
+bool calibrationSaved(){return storedValid;}
+uint8_t calibrationOffset(){return storedOffset;}
+bool calibrationSave(uint8_t minute,int16_t rawPosition){
+  if(minute>=60 || rawPosition<0 || rawPosition>=128)return false;
+  const uint16_t lower=(minute*128U+59U)/60U;
+  const uint16_t upper=((minute+1U)*128U+59U)/60U-1U;
+  const uint8_t target=(lower+upper)/2U;
+  const uint8_t offset=(target+128U-rawPosition)%128U;
+  if(storedValid && storedOffset==offset)return true;
+  CalibrationRecord previous={};
+  EEPROM.get(CAL_EEPROM_OFFSET,previous);
+  CalibrationRecord r={CAL_MAGIC,1,offset,(uint8_t)(offset ^ 0xA5),0};
+  EEPROM.put(CAL_EEPROM_OFFSET,r);
+  if(!EEPROM.commit()){
+    EEPROM.put(CAL_EEPROM_OFFSET,previous);
+    return false;
+  }
+  storedOffset=offset;
+  storedValid=true;
+  Serial.printf("[CAL] Saved offset=%u\n",storedOffset);
+  return true;
+}
+
+int8_t calibrationSignedOffset(){return storedOffset>=64?(int16_t)storedOffset-128:storedOffset;}
+bool calibrationTimeAllowed(uint8_t& minute){
+  if(!timeIsFresh())return false;
+  time_t now=time(nullptr);
+  struct tm local={};
+  if(!localtime_r(&now,&local))return false;
+  if((uint32_t)local.tm_sec>=60UL-runtimeSettings.calibrationGuardSec)return false;
+  minute=(uint8_t)local.tm_min;
+  return true;
+}

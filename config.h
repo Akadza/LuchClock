@@ -1,8 +1,10 @@
 #pragma once
 #include "secrets.h"
 
-// Имя устройства в сети
-#define DEVICE_HOSTNAME "luch-clock"
+// Имя конкретного контроллера. Менять здесь перед прошивкой каждой ESP.
+#define DEVICE_NAME "LuchClock1"
+// Сетевое имя: для четырёх ESP должно быть уникальным.
+#define DEVICE_HOSTNAME "luchclock1"
 
 // Веб-сервер
 #define WEB_PORT 80
