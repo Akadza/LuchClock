@@ -114,12 +114,13 @@ void handleRoot() {
   );
 }
 
+static bool calibrationAllowed();
 void handleStatus() {
   String json;
   json.reserve(560);
 
   json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.10\",");
+  json += F("\"version\":\"1.11\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -141,9 +142,11 @@ void handleStatus() {
   json += F(",\"encoder_raw\":");
   json += String(encoderRaw);
   json += F(",\"encoder_position\":");
-  json += String(encoderValid() ? encoderPosition : -1);
+  json += String(encoderCalibratedPosition());
+  json += F(",\"encoder_raw_position\":");json += String(encoderRawPosition());
+  json += F(",\"calibration_allowed\":");json += calibrationAllowed()?"true":"false";
   json += F(",\"encoder_minutes\":");
-  json += String(calibrationSaved()?calibrationMinutes():encoderMinutes());
+  json += String(encoderMinutes());
   json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
   json += F(",\"calibration_offset\":");json += String(calibrationOffset());
 
@@ -452,7 +455,7 @@ void handleCalibration(){
     const unsigned guard=runtimeSettings.calibrationGuardSec;
     server.send(409,"text/plain; charset=utf-8",String("Калибровка разрешена с ")+guard+" по "+(59U-guard)+" секунду");return;
   }
-  if(!calibrationSave(minute,encoderPosition)){
+  if(!calibrationSave(minute,encoderRawPosition())){
     server.send(500,"text/plain; charset=utf-8","Не удалось сохранить калибровку");return;
   }
   webAddEvent("Калибровка энкодера сохранена");
@@ -499,7 +502,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.10 started");
+  Serial.println("[WEB] HTTP server v1.11 started");
 }
 
 void webLoop() {
