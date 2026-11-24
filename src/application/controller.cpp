@@ -1,4 +1,6 @@
 #include "controller.h"
+#include <sys/time.h>
+#include <time.h>
 #include <ESP8266WiFi.h>
 #include "../../config.h"
 #include "event_logger.h"
@@ -44,6 +46,13 @@ public:
  s.encoderRawPosition=encoder().encoderRawPosition();
  s.encoderMinutes=encoder().encoderMinutes();
  s.calibrationSaved=calibrationSaved();
+ struct timeval tv={};
+ gettimeofday(&tv,nullptr);
+ struct tm local={};
+ time_t seconds=tv.tv_sec;
+ const bool localValid=localtime_r(&seconds,&local)!=nullptr;
+ s.localClockMs=localValid?((uint64_t)local.tm_hour*3600+local.tm_min*60+local.tm_sec)*1000+tv.tv_usec/1000:0;
+ s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibrationNeeded(local.tm_min,encoder().encoderRawPosition());
  s.calibrationOffset=calibrationOffset();
  s.calibrationSignedOffset=(int)calibrationSignedOffset();
  s.motorRun=motor().motorRunElapsedMs();
