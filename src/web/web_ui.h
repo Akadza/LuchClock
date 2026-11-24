@@ -365,7 +365,7 @@ body.modal-open{overflow:hidden}
       <div class="value" id="sensorDetail">—</div>
     </div>
     <div class="diag-item">
-      <div class="label">Сырой код / позиция</div>
+      <div class="label">Сырой код / позиция / смещение</div>
       <div class="value" id="magnetDetail">—</div>
     </div>
   </div>
@@ -382,14 +382,14 @@ body.modal-open{overflow:hidden}
 </section>
 
 <footer>
-  LuchClock v1.11 · Тестовый режим ·
+  LuchClock v1.12 · Тестовый режим ·
   Время работы: <span id="uptime">—</span>
 </footer>
 </main>
 <div id="settingsModal" class="settings-overlay" hidden onclick="if(event.target===this)toggleSettings()">
  <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="between settings-heading"><h2 id="settingsTitle">Настройки контроллера</h2><button type="button" onclick="toggleSettings()" aria-label="Закрыть настройки">✕</button></div>
-  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Требуется ручной режим и остановленный двигатель.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
+  <div class="settings-scroll"><div id="settingsPanel"><div id="settingsFields" class="diag"></div><div class="info">«Применить» — временно в RAM, «Сохранить» — во flash. Изменять можно только при остановленном двигателе.</div><div class="calibration-box"><div class="between"><strong>Калибровка энкодера</strong><small id="calibrationState">Проверка...</small></div><p class="calibration-help">Установите минутную стрелку на текущее время NTP. Калибровка сохраняется автоматически. Доступно в выключенном и ручном режимах при остановленном двигателе. Перед сменой минуты кнопка временно блокируется.</p><div class="calibration-actions"><button id="calibrationBtn" class="save-button" onclick="runCalibration()" disabled>Откалибровать</button></div><small id="calibrationMessage"></small></div></div></div>
   <div class="settings-footer"><small id="settingsMessage"></small><div><button id="applySettingsBtn" onclick="submitSettings('apply')" disabled>Применить</button> <button id="saveSettingsBtn" class="save-button" onclick="submitSettings('save')" disabled>Сохранить</button></div></div>
  </section>
 </div>
@@ -431,8 +431,8 @@ function renderStatus(s) {
   text('deviceName',s.device || 'LuchClock1');
   const calAllowed=s.calibration_allowed===true;
   $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
-  $('calibrationBtn').title=calAllowed?'Откалибровать и сохранить':'Нужен ручной режим, остановленный двигатель, исправный энкодер и актуальный NTP';
-  text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_offset:'Не откалиброван');
+  $('calibrationBtn').title=calAllowed?'Откалибровать и сохранить':'Калибровка недоступна';
+  text('calibrationState',s.calibration_saved?'Сохранено · смещение '+s.calibration_signed_offset:'Не откалиброван');
   if (!modeRequestPending && currentMode !== s.mode) showMode(s.mode);
 
   text(
@@ -478,7 +478,7 @@ function renderStatus(s) {
   text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
   text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
   text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position : 'Нет данных', 'value ' + (s.encoder_valid ? 'ok' : 'warn'));
-  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · сырая позиция: ' + s.encoder_raw_position + '/127' : ' · код не распознан') : 'PCF8574 не найден');
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · сырая позиция: ' + s.encoder_raw_position + '/127 · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
@@ -727,7 +727,7 @@ const settingFields=[
  ['manualLimitSec','Лимит ручного режима, сек',1,900],
  ['autoLimitSec','Лимит авторежима, сек',1,900],
  ['manualPauseSec','Пауза после ручного лимита, сек',1,300],
- ['calibrationGuardSec','Запрет автокалибровки до и после смены минуты, сек',0,29],
+ ['calibrationGuardSec','Запрет калибровки перед сменой минуты, сек',0,29],
  ['noMotionWarnSec','Аварийная остановка без движения энкодера, сек',1,900],
  ['autoStepMin','Шаг синхронизации, мин',1,10],
  ['wifiReconnectMs','Повтор Wi-Fi, мс',1000,300000],
@@ -820,6 +820,7 @@ async function runCalibration(){
   calibrationBusy=true;$('calibrationBtn').disabled=true;
   try{
     const response=await fetch('/api/calibration',{method:'POST'});
+    if(response.status===409)return;
     if(!response.ok)throw Error(await response.text());
     text('calibrationMessage','Калибровка сохранена во flash.');
     loadLog();
