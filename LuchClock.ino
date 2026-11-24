@@ -51,6 +51,10 @@ void loop() {
       eventAdd("Синхронизация NTP восстановлена",EventCode::NTP_RESTORED);
       break;
 
+    case TIME_EVENT_THRESHOLD_CHANGED:
+      eventAdd("Время соответствует новому порогу NTP");
+      break;
+
     default:
       break;
   }
