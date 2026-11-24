@@ -771,7 +771,7 @@ async function loadSettings(){
       const item=document.createElement('label');item.className='diag-item';
       const title=document.createElement('div');title.className='label';title.textContent=label;
       const input=document.createElement('input');input.type='number';input.id='setting_'+key;
-      input.min=min;input.max=max;input.step=1;input.value=data[key]/scale;
+      input.min=min;input.max=max;input.step=scale===3600?'any':1;input.value=data[key]/scale;
       input.style.cssText='width:100%;background:#111720;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px';
       input.addEventListener('input',updateSettingsButtons);
       item.append(title,input);root.appendChild(item);
@@ -790,10 +790,10 @@ async function submitSettings(operation){
   for(const [key,label,min,max,scale] of settingFields){
     const raw=$('setting_'+key).value;
     const n=Number(raw);
-    if(!/^\d+$/.test(raw)||!Number.isInteger(n)||n<min||n>max){
+    if(raw.trim()===''||!Number.isFinite(n)||n<min-0.000001||n>max||(scale!==3600&&!Number.isInteger(n))){
       text('settingsMessage','Проверьте: '+label);return;
     }
-    args.set(key,String(n*scale));
+    args.set(key,String(Math.round(n*scale)));
   }
   args.set('operation',operation);
   settingsBusy=true;updateSettingsButtons();
