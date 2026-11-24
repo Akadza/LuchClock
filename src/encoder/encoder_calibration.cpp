@@ -26,11 +26,6 @@ void calibrationSetup(){
 }
 bool calibrationSaved(){return storedValid;}
 uint8_t calibrationOffset(){return storedOffset;}
-int calibrationMinutes(){
-  if(!encoderValid())return -1;
-  const uint8_t position=(uint8_t)((encoderPosition+storedOffset)%128);
-  return position*60/128;
-}
 bool calibrationSave(uint8_t minute,int16_t rawPosition){
   if(minute>=60 || rawPosition<0 || rawPosition>=128)return false;
   const uint16_t lower=(minute*128U+59U)/60U;
