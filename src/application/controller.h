@@ -5,6 +5,7 @@ struct CommandResult { int status; const char* message; };
 struct ModeState {
  String mode; bool manual, transition, autoReady, canForward, canReverse, canStop, canAuto, calibrationAllowed, settingsAllowed;
  unsigned long waitMs, motorLimitMs;
+ bool canManual, canOff, canResetFault, showFaultReset;
 };
 struct ControllerState {
  ModeState mode;
