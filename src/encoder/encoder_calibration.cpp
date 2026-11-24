@@ -28,12 +28,19 @@ void calibrationSetup(){
 }
 bool calibrationSaved(){return storedValid;}
 uint8_t calibrationOffset(){return storedOffset;}
-bool calibrationSave(uint8_t minute,int16_t rawPosition){
-  if(minute>=60 || rawPosition<0 || rawPosition>=128)return false;
+static uint8_t targetOffset(uint8_t minute,int16_t rawPosition){
   const uint16_t lower=(minute*128U+59U)/60U;
   const uint16_t upper=((minute+1U)*128U+59U)/60U-1U;
   const uint8_t target=(lower+upper)/2U;
-  const uint8_t offset=(target+128U-rawPosition)%128U;
+  return (target+128U-rawPosition)%128U;
+}
+bool calibrationNeeded(uint8_t minute,int16_t rawPosition){
+  if(minute>=60 || rawPosition<0 || rawPosition>=128)return false;
+  return !storedValid || storedOffset!=targetOffset(minute,rawPosition);
+}
+bool calibrationSave(uint8_t minute,int16_t rawPosition){
+  if(minute>=60 || rawPosition<0 || rawPosition>=128)return false;
+  const uint8_t offset=targetOffset(minute,rawPosition);
   if(storedValid && storedOffset==offset)return true;
   CalibrationRecord previous={};
   storage().get(CAL_EEPROM_OFFSET,previous);
