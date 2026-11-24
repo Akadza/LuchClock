@@ -6,6 +6,8 @@
 #include "../../config.h"
 #include "../network/time_manager.h"
 #include "web_server.h"
+#include "../application/controller.h"
+#include "../application/event_logger.h"
 #include "web_ui.h"
 #include "../motor/motor_controller.h"
 #include "../system_settings.h"
@@ -13,33 +15,6 @@
 #include "../encoder/encoder_calibration.h"
 
 static ESP8266WebServer server(WEB_PORT);
-
-static String currentMode = "off";
-static bool manualMode = false;
-static unsigned long modeChangedAt = 0;
-static bool modeTransition = false;
-static bool autoReady = false;
-static bool previousAutoFault = false;
-static unsigned long previousManualPause = 0;
-
-static unsigned long modeWaitRemainingMs() {
-  if (!modeTransition) return 0;
-  unsigned long elapsed = millis() - modeChangedAt;
-  return elapsed >= DEFAULT_MODE_DELAY_MS ? 0 : DEFAULT_MODE_DELAY_MS - elapsed;
-}
-static bool modeIsReady() {
-  return !modeTransition && motorState() == MOTOR_STOPPED;
-}
-
-
-struct EventEntry {
-  unsigned long uptimeSeconds;
-  time_t timestamp;
-  String message;
-};
-
-static EventEntry events[MAX_LOG_ENTRIES];
-static unsigned int eventCount = 0;
 
 String jsonEscape(const String& source) {
   String result;
@@ -88,24 +63,6 @@ String formatEventTime(time_t timestamp) {
   return String(buffer);
 }
 
-void webAddEvent(const String& message) {
-  if (eventCount >= MAX_LOG_ENTRIES) {
-    for (unsigned int i = 1; i < eventCount; i++) {
-      events[i - 1] = events[i];
-    }
-
-    eventCount--;
-  }
-
-  EventEntry& entry = events[eventCount];
-
-  entry.uptimeSeconds = millis() / 1000UL;
-  entry.timestamp = timeIsValid() ? time(nullptr) : 0;
-  entry.message = message;
-
-  eventCount++;
-}
-
 void handleRoot() {
   server.send_P(
     200,
@@ -114,13 +71,14 @@ void handleRoot() {
   );
 }
 
-static bool calibrationAllowed();
+
 void handleStatus() {
+  const ModeState state=controller().state();
   String json;
   json.reserve(560);
 
   json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.12\",");
+  json += F("\"version\":\"1.13\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -129,7 +87,7 @@ void handleStatus() {
   json += WiFi.localIP().toString();
 
   json += F("\",\"mode\":\"");
-  json += currentMode;
+  json += state.mode;
 
   json += F("\",\"simulation\":false");
 
@@ -144,7 +102,7 @@ void handleStatus() {
   json += F(",\"encoder_position\":");
   json += String(encoderCalibratedPosition());
   json += F(",\"encoder_raw_position\":");json += String(encoderRawPosition());
-  json += F(",\"calibration_allowed\":");json += calibrationAllowed()?"true":"false";
+  json += F(",\"calibration_allowed\":");json += state.calibrationAllowed?"true":"false";
   json += F(",\"encoder_minutes\":");
   json += String(encoderMinutes());
   json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
@@ -152,7 +110,7 @@ void handleStatus() {
   json += F(",\"calibration_signed_offset\":");json += String((int)calibrationSignedOffset());
 
   json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
-  json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
+  json += F(",\"motor_limit_ms\":");json += String(state.motorLimitMs);
   json += F(",\"manual_pause_ms\":");json += String(motorManualPauseRemainingMs());
   json += F(",\"auto_fault\":");json += motorAutoFault()?"true":"false";
   json += F(",\"fault_reason\":\"");json += motorFaultReason();json += F("\"");
@@ -179,23 +137,23 @@ void handleStatus() {
   json += F("\",\"motor_wait_ms\":");
   json += String(motorWaitRemainingMs());
   json += F(",\"mode_transition\":");
-  json += modeTransition ? "true" : "false";
+  json += state.transition ? "true" : "false";
   json += F(",\"mode_wait_total_ms\":");
   json += String(DEFAULT_MODE_DELAY_MS);
   json += F(",\"motor_wait_total_ms\":");
   json += String(DEFAULT_MOTOR_STOP_DELAY_MS);
   json += F(",\"mode_wait_ms\":");
-  json += String(modeWaitRemainingMs());
+  json += String(state.waitMs);
   json += F(",\"auto_ready\":");
-  json += (currentMode=="auto" && autoReady && modeIsReady() && !motorAutoFault()) ? "true" : "false";
+  json += state.autoReady ? "true" : "false";
   json += F(",\"can_forward\":");
-  json += (manualMode && modeIsReady() && motorCanForward()) ? "true" : "false";
+  json += state.canForward ? "true" : "false";
   json += F(",\"can_reverse\":");
-  json += (manualMode && modeIsReady() && motorCanReverse()) ? "true" : "false";
+  json += state.canReverse ? "true" : "false";
   json += F(",\"can_stop\":");
-  json += (manualMode && (motorState()==MOTOR_FORWARD || motorState()==MOTOR_REVERSE)) ? "true" : "false";
+  json += state.canStop ? "true" : "false";
   json += F(",\"can_auto\":");
-  json += (encoderValid() && motorManualPauseRemainingMs()==0 && motorState() == MOTOR_STOPPED && !modeTransition && !motorAutoFault()) ? "true" : "false";
+  json += state.canAuto ? "true" : "false";
 
   json += F("}");
 
@@ -208,142 +166,28 @@ void handleStatus() {
   );
 }
 
-void handleMode() {
-  if (!server.hasArg("value")) {
-    server.send(400, "text/plain", "Missing mode");
-    return;
-  }
-
-  String mode = server.arg("value");
-  if (mode == currentMode) {server.send(200,"application/json","{\\\"ok\\\":true}");return;}
-  if (mode != "off" && !encoderValid()) {
-    server.send(409,"text/plain; charset=utf-8","Энкодер не подключён: доступен только режим Выключен");return;
-  }
-
-  if (mode == "auto" && motorManualPauseRemainingMs()>0) {
-    server.send(409,"text/plain; charset=utf-8","Во время паузы после лимита автоматический режим запрещён");return;
-  }
-  if (mode != "off" && motorAutoFault()) {
-    server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
-  }
-  if (mode == "off") {
-    motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
-    motorSetAutoMode(false);
-    webAddEvent("Режим выключен");
-  } else if (mode == "manual") {
-    // Запрет переключения во время защитной паузы действует и на API.
-    if (!manualMode && (modeTransition || motorState() != MOTOR_STOPPED)) {
-      server.send(409, "text/plain; charset=utf-8", "Дождитесь завершения защитной паузы и остановки привода");
-      return;
-    }
-    if (currentMode != "manual") {
-      motorStop();
-      manualMode = true;
-      currentMode = "manual";
-      motorSetAutoMode(false);
-      autoReady = false;
-      modeTransition = true;
-      modeChangedAt = millis();
-      webAddEvent("Переключение в ручной режим");
-      Serial.println("[MODE] Manual");
-    }
-  } else if (mode == "auto") {
-    if (currentMode != "auto" && (motorState() != MOTOR_STOPPED || modeTransition)) {
-      server.send(409, "text/plain; charset=utf-8", "Сначала остановите привод и дождитесь завершения паузы");
-      return;
-    }
-    if (currentMode != "auto") {
-      motorStop();
-      manualMode = false;
-      currentMode = "auto";
-      motorSetAutoMode(true);
-      autoReady = false;
-      modeTransition = true;
-      modeChangedAt = millis();
-      webAddEvent("Переключение в автоматический режим");
-      Serial.println("[MODE] Auto");
-    }
-  } else {
-    server.send(400, "text/plain", "Invalid mode");
-    return;
-  }
-
-  server.send(
-    200,
-    "application/json",
-    "{\"ok\":true}"
-  );
+static void sendResult(CommandResult r){
+ if(r.status==200)server.send(200,"application/json","{\"ok\":true}");
+ else server.send(r.status,"text/plain; charset=utf-8",r.message);
 }
-
-void handleCommand() {
-  if (currentMode != "manual") {
-    server.send(
-      409,
-      "text/plain",
-      "Manual mode required"
-    );
-    return;
-  }
-
-  if (!server.hasArg("action")) {
-    server.send(
-      400,
-      "text/plain",
-      "Missing action"
-    );
-    return;
-  }
-
-  String action = server.arg("action");
-
-  if (action != "forward" &&
-      action != "backward" &&
-      action != "stop") {
-
-    server.send(
-      400,
-      "text/plain",
-      "Invalid action"
-    );
-    return;
-  }
-
-  if (action == "stop" && motorState()!=MOTOR_FORWARD && motorState()!=MOTOR_REVERSE) {
-    server.send(409,"text/plain; charset=utf-8","Двигатель уже остановлен");return;
-  }
-  if (action != "stop" && (!modeIsReady() || !encoderValid())) {
-    server.send(409, "text/plain", "Mode transition or motor cooldown active");
-    return;
-  }
-  if (!motorCommand(action)) {
-    server.send(409, "text/plain", "Motor command rejected (fault or invalid state)");
-    return;
-  }
-
-  webAddEvent(String("Ручная команда: ") + action);
-  server.send(
-    200,
-    "application/json",
-    "{\"ok\":true,\"simulation\":false}"
-  );
-}
-
+void handleMode(){if(!server.hasArg("value")){sendResult({400,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
+void handleCommand(){if(!server.hasArg("action")){sendResult({400,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
 void handleEvents() {
   String json;
-  json.reserve(100 + eventCount * 150);
+  json.reserve(100 + eventSize() * 150);
 
   json += F("{\"events\":[");
 
-  for (int i = (int)eventCount - 1; i >= 0; i--) {
-    if (i != (int)eventCount - 1) {
+  for (int i = (int)eventSize() - 1; i >= 0; i--) {
+    if (i != (int)eventSize() - 1) {
       json += ',';
     }
 
-    String eventTime = formatEventTime(events[i].timestamp);
+    String eventTime = formatEventTime(eventAt(i).timestamp);
 
     if (eventTime.length() == 0) {
       eventTime = "После запуска: +";
-      eventTime += String(events[i].uptimeSeconds);
+      eventTime += String(eventAt(i).uptimeSeconds);
       eventTime += " с";
     }
 
@@ -351,7 +195,7 @@ void handleEvents() {
     json += jsonEscape(eventTime);
 
     json += F("\",\"message\":\"");
-    json += jsonEscape(events[i].message);
+    json += jsonEscape(eventAt(i).message);
 
     json += F("\"}");
   }
@@ -398,11 +242,6 @@ void handleSettingsGet(){
   server.send(200,"application/json",json);
 }
 void handleSettingsPost(){
-  // Защитные настройки меняем только при остановленном двигателе.
-  if(currentMode=="auto" || motorState()!=MOTOR_STOPPED || modeTransition){
-    server.send(409,"text/plain; charset=utf-8","Остановите двигатель и дождитесь окончания паузы");
-    return;
-  }
   RuntimeSettings next=runtimeSettings;
   if(!readSetting("manualLimitSec",next.manualLimitSec) ||
      !readSetting("autoLimitSec",next.autoLimitSec) ||
@@ -415,8 +254,7 @@ void handleSettingsPost(){
      !readSetting("ntpStaleSec",next.ntpStaleSec) ||
      !readSetting("encoderPollMs",next.encoderPollMs) ||
      !readSetting("encoderProbeMs",next.encoderProbeMs) ||
-     !readSetting("encoderStableSamples",next.encoderStableSamples) ||
-     !settingsValidate(next)){
+     !readSetting("encoderStableSamples",next.encoderStableSamples)){
     server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
     return;
   }
@@ -424,59 +262,11 @@ void handleSettingsPost(){
   if(operation!="apply" && operation!="save"){
     server.send(400,"text/plain","Invalid operation");return;
   }
-  RuntimeSettings previous=runtimeSettings;
-  runtimeSettings=next;
-  if(operation=="save" && !settingsSave()){
-    runtimeSettings=previous;
-    server.send(500,"text/plain; charset=utf-8","Не удалось сохранить настройки");
-    return;
-  }
-  webAddEvent(operation=="save"?"Настройки сохранены":"Настройки применены временно");
-  server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
+  sendResult(controller().changeSettings(next,operation=="save"));
 }
-static bool calibrationReady(){
-  return (currentMode=="manual" || currentMode=="off") && motorState()==MOTOR_STOPPED &&
-    !modeTransition && !motorAutoFault() && encoderValid() && timeIsFresh();
-}
-static bool calibrationAllowed(){
-  uint8_t minute=0;
-  return calibrationReady() && calibrationTimeAllowed(minute);
-}
-void handleCalibration(){
-  if(!calibrationReady()){
-    server.send(409,"text/plain; charset=utf-8","Калибровка недоступна");return;
-  }
-  uint8_t minute=0;
-  if(!calibrationTimeAllowed(minute)){
-    server.send(409,"text/plain","");return;
-  }
-  if(!calibrationSave(minute,encoderRawPosition())){
-    server.send(500,"text/plain; charset=utf-8","Не удалось сохранить калибровку");return;
-  }
-  webAddEvent("Калибровка энкодера сохранена");
-  server.send(200,"application/json","{\"ok\":true}");
-}
-void handleFaultReset(){
-  if(currentMode!="off" || !encoderValid() || !motorResetAutoFault()){
-    server.send(409,"text/plain; charset=utf-8","Перейдите в Выключен, проверьте энкодер и наличие аварии");
-    return;
-  }
-  webAddEvent("Авария сброшена оператором");
-  server.send(200,"application/json",String("{")+char(34)+"ok"+char(34)+":true}");
-}
-
+void handleCalibration(){sendResult(controller().calibrate());}
+void handleFaultReset(){sendResult(controller().resetFault());}
 void webSetup() {
-  manualMode = false;
-  currentMode = "off";
-  motorSetAutoMode(false);
-  modeTransition = false;
-  autoReady = false;
-  eventCount = 0;
-  previousAutoFault=false;
-  previousManualPause=0;
-
-  webAddEvent("Контроллер запущен");
-
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/mode", HTTP_POST, handleMode);
@@ -497,43 +287,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.12 started");
+  Serial.println("[WEB] HTTP server v1.13 started");
 }
 
-void webLoop() {
-  const bool encoderNowValid=encoderValid();
-  if (!encoderNowValid && currentMode!="off") {
-    // При потере датчика во время движения motorLoop уже фиксирует аварию.
-    // Режим OFF сохраняет аварийную блокировку до ручного сброса.
-    motorStop();currentMode="off";manualMode=false;autoReady=false;
-    modeTransition=false;motorSetAutoMode(false);
-    webAddEvent("Энкодер недоступен: переход в Выключен");
-  }
-  const bool fault=motorAutoFault();
-  if(fault && !previousAutoFault){
-    String reason=motorFaultReason();
-    webAddEvent(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
-      reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
-      "Критическая ошибка: привод заблокирован");
-  }
-  if(fault && currentMode!="off"){
-    motorStop();currentMode="off";manualMode=false;autoReady=false;
-    modeTransition=false;motorSetAutoMode(false);
-    webAddEvent("Аварийный переход в Выключен");
-  }
-  previousAutoFault=fault;
-  const unsigned long manualPause=motorManualPauseRemainingMs();
-  if(manualPause && !previousManualPause)webAddEvent("Достигнут лимит ручной работы: защитная пауза");
-  previousManualPause=manualPause;
-  if (modeTransition && motorState() != MOTOR_WAITING &&
-      (modeWaitRemainingMs() == 0 || motorState() == MOTOR_FAULT)) {
-    modeTransition = false;
-    if (currentMode=="auto") {
-      autoReady = (motorState() == MOTOR_STOPPED);
-      Serial.println(autoReady ? "[MODE] Auto ready" : "[MODE] Auto not ready");
-    } else {
-      Serial.println(F("[MODE] Manual controls unlocked"));
-    }
-  }
-  server.handleClient();
-}
+void webLoop(){server.handleClient();}
