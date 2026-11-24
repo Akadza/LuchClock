@@ -466,7 +466,6 @@ function renderStatus(s) {
   } else {
     if(!clockValid)text('time', s.time_local || '--:--:--');
 
-    if(s.mode==='off')text('modeHint','Выключен · выход D5 отключён');
   if (s.ntp_recent) {
       text('ntp', 'Синхронизировано', 'value ok');
 
@@ -496,10 +495,10 @@ function renderStatus(s) {
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
   lastStatus = s;
-  lastStatusAt = Date.now();
+  lastStatusAt = performance.now();
   if(newlyFaulted)loadLog();
-  updateSettingsButtons();
   statusKnown = true;
+  updateSettingsButtons();
   const motorLabels = {stopped:'Остановлен',forward:'Вперёд',reverse:'Назад',waiting:'Остановка · защитная пауза',fault:'Ошибка привода'};
   text('motorStatus', motorLabels[s.motor_state] || 'Неизвестно');
   lastMotorState = s.motor_state || 'stopped';
@@ -510,7 +509,6 @@ function renderStatus(s) {
   if (pendingAction && ((pendingAction === 'stop' && s.motor_state !== 'forward' && s.motor_state !== 'reverse') ||
       (pendingAction === 'forward' && s.motor_state === 'forward') ||
       (pendingAction === 'backward' && s.motor_state === 'reverse'))) pendingAction = '';
-  updateManualButtons(lastMotorState, lastMotorWait);
   updateProgress();
   if (s.motor_state === 'waiting') text('motorStatus', 'Остановка · ' + Math.ceil(s.motor_wait_ms / 1000) + ' с');
   $('faultActions').hidden = !s.show_fault_reset;
@@ -524,6 +522,8 @@ function renderStatus(s) {
   if (s.mode === 'auto') {
     text('modeHint', s.mode_transition ? 'Переключение · ожидание остановки' :
       s.auto_ready ? 'Автоматический · готов к управлению' : 'Автоматический · не готов');
+  } else if(s.mode==='off') {
+    text('modeHint','Выключен · выход D5 отключён');
   } else {
     text('modeHint', s.mode_transition ? 'Ручной · ожидание остановки' : 'Ручное управление · тест GPIO14');
   }
@@ -560,7 +560,7 @@ function updateProgress() {
   if (!s) return;
   const active = !!s.mode_transition || s.motor_state === 'waiting';
   const left = s.mode_transition ? lastModeWait : lastMotorWait;
-  const elapsed = Date.now() - lastStatusAt;
+  const elapsed = performance.now() - lastStatusAt;
   const remaining = Math.max(0, left - elapsed);
   // Длительность и оставшееся время приходят от ESP; браузер только анимирует шкалу.
   const total = s.mode_transition ? (s.mode_wait_total_ms || 1000) : (s.motor_wait_total_ms || 1000);
@@ -569,7 +569,7 @@ function updateProgress() {
   const run = s.mode==='manual' && s.motor_state==='forward';
   $('runProgress').hidden=!run;
   if(run){
-    const ms=Math.min(s.motor_limit_ms,s.motor_run_ms+Math.max(0,Date.now()-lastStatusAt));
+    const ms=Math.min(s.motor_limit_ms,s.motor_run_ms+Math.max(0,performance.now()-lastStatusAt));
     const fmt=v=>String(Math.floor(v/60000)).padStart(2,'0')+':'+String(Math.floor(v/1000)%60).padStart(2,'0');
     text('runTimer',fmt(ms)+' / '+fmt(s.motor_limit_ms));
     $('runBar').style.width=Math.min(100,100*ms/s.motor_limit_ms)+'%';
@@ -599,11 +599,20 @@ function updateManualButtons(state, remaining) {
   else if (pendingAction) text('commandInfo', 'Ожидание подтверждения команды от ESP');
   else text('commandInfo', 'Привод: ' + ({stopped:'остановлен',forward:'движется вперёд',reverse:'движется назад'}[state] || 'состояние неизвестно'));
 }
+async function request(path,options={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),5000);
+  try{
+    const response=await fetch(path,{...options,signal:controller.signal});
+    const body=await response.text();
+    return {ok:response.ok,status:response.status,json:async()=>JSON.parse(body)};
+  }finally{clearTimeout(timer);}
+}
 async function refresh() {
   if (refreshPending || settingsLoading) return;
   refreshPending = true;
   try {
-    const response = await fetch('/api/status', {cache:'no-store'});
+    const response = await request('/api/status', {cache:'no-store'});
     if (!response.ok) throw Error('HTTP ' + response.status);
     const data = await response.json();
     statusFailures = 0;
@@ -615,6 +624,7 @@ async function refresh() {
       text('wifiDetail', 'Нет ответа API · состояние Wi-Fi неизвестно');
       motorPermissions = {can_forward:false,can_reverse:false,can_stop:true};
       statusKnown = false;
+      updateSettingsButtons();
       clockValid=false;clockAt=0;
       text('time','--:--:--');
       $('calibrationBtn').disabled=true;
@@ -629,7 +639,7 @@ async function errorMessage(response){
   try {const data=await response.json();return data.message || 'Ошибка запроса';}catch(e){return 'HTTP '+response.status;}
 }
 async function post(path) {
-  const response = await fetch(path, {method:'POST'});
+  const response = await request(path, {method:'POST'});
   if (!response.ok) {
     const msg = await errorMessage(response);
     throw Error(msg || 'Ошибка запроса');
@@ -688,7 +698,7 @@ async function loadLog() {
   if(logPending || settingsLoading)return;
   logPending=true;
   try {
-    const response = await fetch('/api/events', {cache:'no-store'});
+    const response = await request('/api/events', {cache:'no-store'});
     if (!response.ok) throw Error();
     const data = await response.json();
     const signature = JSON.stringify(data.events);
@@ -722,6 +732,7 @@ async function loadLog() {
       container.appendChild(item);
     }
   } catch (e) {
+    lastLogSignature='';
     text('log', 'Не удалось получить журнал');
   } finally {logPending=false;}
 }
@@ -737,11 +748,12 @@ function currentSettings(){const result={};for(const [key] of settingFields)resu
 function updateSettingsButtons(){
   if(!settingsLoaded)return;
   const changed=JSON.stringify(currentSettings())!==JSON.stringify(appliedSettings);
-  const blocked=settingsBusy || !lastStatus || !lastStatus.settings_allowed;
+  const blocked=settingsBusy || !statusKnown || !lastStatus || !lastStatus.settings_allowed;
   $('applySettingsBtn').disabled=blocked || !changed;
   $('saveSettingsBtn').disabled=blocked || (!changed && savedSettings);
 }
 function toggleSettings(){
+  if(settingsBusy || calibrationBusy)return;
   const p=$('settingsModal');
   settingsOpenGeneration++;
   text('calibrationMessage','');
@@ -761,7 +773,7 @@ async function loadSettings(){
   const generation=settingsOpenGeneration;
   settingsLoading=true;
   try{
-    const response=await fetch('/api/settings',{cache:'no-store'});
+    const response=await request('/api/settings',{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const data=await response.json();
     if(generation!==settingsOpenGeneration || $('settingsModal').hidden)return;
@@ -798,7 +810,7 @@ async function submitSettings(operation){
   args.set('operation',operation);
   settingsBusy=true;updateSettingsButtons();
   try{
-    const response=await fetch('/api/settings',{method:'POST',body:args});
+    const response=await request('/api/settings',{method:'POST',body:args});
     if(!response.ok)throw Error(await errorMessage(response));
     appliedSettings=currentSettings();
     savedSettings=operation==='save';
@@ -813,7 +825,7 @@ async function runCalibration(){
   if(calibrationBusy || $('calibrationBtn').disabled)return;
   calibrationBusy=true;$('calibrationBtn').disabled=true;
   try{
-    const response=await fetch('/api/calibration',{method:'POST'});
+    const response=await request('/api/calibration',{method:'POST'});
     if(response.status===409)return;
     if(!response.ok)throw Error(await errorMessage(response));
     text('calibrationBtn','Откалибровано');
@@ -833,7 +845,7 @@ setInterval(()=>{if(!modeRequestPending && !commandPending && !settingsBusy && !
 setInterval(() => {
   tickClock();
   if (!lastStatus) return;
-  const elapsed = Date.now() - lastStatusAt;
+  const elapsed = performance.now() - lastStatusAt;
   if (lastStatus.motor_state === 'waiting') {
     const remaining = Math.max(0, lastMotorWait - elapsed);
     updateManualButtons('waiting', remaining);
