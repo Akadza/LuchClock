@@ -4,7 +4,8 @@
 // Shared encoder state: implementation lives in encoder_reader.cpp.
 extern uint8_t encoderAddress;
 extern uint8_t encoderRaw;
-extern int16_t encoderPosition;
+int16_t encoderRawPosition(); // Диагностика и контроль физического движения.
+int16_t encoderCalibratedPosition(); // Рабочая позиция стрелки.
 
 void encoderSetup();
 void encoderLoop();
