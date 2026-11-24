@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "../system_settings.h"
-#include "../encoder/encoder_reader.h"
+#include "../application/hardware.h"
 #include "motor_controller.h"
 
 static MotorState state=MOTOR_STOPPED;
@@ -53,7 +53,7 @@ bool motorResetAutoFault(){
 }
 bool motorCanForward(){
   return !autoMode && !autoFault && state==MOTOR_STOPPED &&
-    motorManualPauseRemainingMs()==0 && encoderValid();
+    motorManualPauseRemainingMs()==0 && encoder().encoderValid();
 }
 bool motorCanReverse(){return false;}
 bool motorCanStop(){return true;}
@@ -66,7 +66,7 @@ void motorStop(){
   }
 }
 void motorLoop(){
-  if(state==MOTOR_FORWARD && !encoderValid()){
+  if(state==MOTOR_FORWARD && !encoder().encoderValid()){
     digitalWrite(MOTOR_OUTPUT_PIN,LOW);
     lastRunMs=millis()-runStarted;
     state=MOTOR_FAULT;
@@ -75,8 +75,9 @@ void motorLoop(){
   }
   if(state==MOTOR_FORWARD){
     // Encoder movement must be observed during motor operation.
-    if(encoderRawPosition()!=lastPosition){
-      lastPosition=encoderRawPosition();lastMovementAt=millis();
+    const int16_t position=encoder().encoderRawPosition();
+    if(position!=lastPosition){
+      lastPosition=position;lastMovementAt=millis();
     }else if(millis()-lastMovementAt>=settingsCurrent().noMotionWarnSec*1000UL){
       digitalWrite(MOTOR_OUTPUT_PIN,LOW);
       lastRunMs=millis()-runStarted;
@@ -107,7 +108,7 @@ bool motorCommand(const String& action){
   if(action=="stop"){motorStop();return true;}
   if(action!="forward" || !motorCanForward())return false;
   runStarted=millis();lastRunMs=0;state=MOTOR_FORWARD;
-  lastPosition=encoderRawPosition();lastMovementAt=millis();
+  lastPosition=encoder().encoderRawPosition();lastMovementAt=millis();
   digitalWrite(MOTOR_OUTPUT_PIN,HIGH);
   Serial.println(F("[MOTOR] FORWARD"));
   return true;
