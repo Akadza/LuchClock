@@ -238,14 +238,19 @@ void handleSettingsGet(){
   json+=sep+String(char(34))+"noMotionWarnSec"+char(34)+":"+String(settings.noMotionWarnSec);sep=",";
   json+=sep+String(char(34))+"autoStepMin"+char(34)+":"+String(settings.autoStepMin);sep=",";
   json+=sep+String(char(34))+"wifiReconnectMs"+char(34)+":"+String(settings.wifiReconnectMs);sep=",";
-  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(settings.wifiDiagnosticMs);sep=",";
+  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(DEFAULT_WIFI_DIAGNOSTIC_MS);sep=",";
   json+=sep+String(char(34))+"ntpStaleSec"+char(34)+":"+String(settings.ntpStaleSec);sep=",";
   json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(settings.encoderPollMs);sep=",";
-  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(settings.encoderProbeMs);sep=",";
+  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(DEFAULT_ENCODER_PROBE_MS);sep=",";
   json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(settings.encoderStableSamples);sep=",";
   json+=","+String(char(34))+"_saved"+char(34)+":";
   json+=controller().settingsSaved()?"true":"false";
-  json+="}";
+  json+=F(",\"_fields\":[");
+  bool first=true;
+#define FIELD(key,label,min,max,scale) if(!first)json+=',';first=false;json+=F("[\"" #key "\",\"" label "\",");json+=String((min)/(scale));json+=',';json+=String((max)/(scale));json+=',';json+=String(scale);json+=']';
+  PUBLIC_SETTINGS(FIELD)
+#undef FIELD
+  json+=F("]}");
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
 }
