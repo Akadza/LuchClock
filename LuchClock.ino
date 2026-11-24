@@ -40,15 +40,15 @@ void loop() {
 
   switch (event) {
     case TIME_EVENT_FIRST_SYNC:
-      eventAdd("Получено точное время NTP","NTP_SYNC");
+      eventAdd("Получено точное время NTP",EventCode::NTP_SYNC);
       break;
 
     case TIME_EVENT_STALE:
-      eventAdd("NTP давно не синхронизировался","NTP_STALE","warning");
+      eventAdd("NTP давно не синхронизировался",EventCode::NTP_STALE,EventLevel::Warning);
       break;
 
     case TIME_EVENT_RESTORED:
-      eventAdd("Синхронизация NTP восстановлена","NTP_RESTORED");
+      eventAdd("Синхронизация NTP восстановлена",EventCode::NTP_RESTORED);
       break;
 
     default:
