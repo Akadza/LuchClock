@@ -38,6 +38,15 @@ public:
  virtual bool timeIsFresh()=0;
  virtual unsigned long timeSyncAgeSeconds()=0;
  virtual String timeLocalString()=0;
+ virtual bool localClock(uint32_t& ms,uint8_t& minute)=0;
  virtual String timeLastSyncString()=0;
 };
 ITimeProvider& clockTime();
+
+class INetworkStatus {
+public:
+ virtual ~INetworkStatus()=default;
+ virtual bool connected()=0;
+ virtual String ip()=0;
+};
+INetworkStatus& networkStatus();
