@@ -1,4 +1,6 @@
 #include "controller.h"
+#include <ESP8266WiFi.h>
+#include "../../config.h"
 #include "event_logger.h"
 #include "../motor/motor_controller.h"
 #include "../encoder/encoder_reader.h"
@@ -30,6 +32,40 @@ static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && c
 static bool settingsAllowed(){return currentMode!="auto" && motorState()==MOTOR_STOPPED && !modeTransition;}
 class Controller final:public IController {
 public:
+ ControllerState snapshot() const override {
+ ControllerState s;
+ s.mode=state();
+ s.device=DEVICE_NAME;
+ s.wifi=WiFi.status() == WL_CONNECTED;
+ s.ip=WiFi.localIP().toString();
+ s.encoderConnected=encoderConnected();
+ s.encoderValid=encoderValid();
+ s.encoderAddress=encoderAddress;
+ s.encoderRaw=encoderRaw;
+ s.encoderPosition=encoderCalibratedPosition();
+ s.encoderRawPosition=encoderRawPosition();
+ s.encoderMinutes=encoderMinutes();
+ s.calibrationSaved=calibrationSaved();
+ s.calibrationOffset=calibrationOffset();
+ s.calibrationSignedOffset=(int)calibrationSignedOffset();
+ s.motorRun=motorRunElapsedMs();
+ s.manualPause=motorManualPauseRemainingMs();
+ s.fault=motorAutoFault();
+ s.faultReason=motorFaultReason();
+ s.uptime=millis() / 1000UL;
+ s.ntpSynced=timeIsValid();
+ s.ntpRecent=timeIsFresh();
+ s.localTime=timeLocalString();
+ s.lastSync=timeLastSyncString();
+ s.ntpAge=(long)timeSyncAgeSeconds();
+ s.motorState=motorStateText();
+ s.motorWait=motorWaitRemainingMs();
+ s.modeWaitTotal=DEFAULT_MODE_DELAY_MS;
+ s.motorWaitTotal=DEFAULT_MOTOR_STOP_DELAY_MS;
+ return s;
+ }
+ RuntimeSettings settings() const override {return runtimeSettings;}
+ bool settingsSaved() const override {return settingsPersistedMatches();}
  ModeState state() const override {
  return {currentMode,manualMode,modeTransition,currentMode=="auto" && autoReady && modeIsReady() && !motorAutoFault(),
  manualMode && modeIsReady() && motorCanForward(),manualMode && modeIsReady() && motorCanReverse(),
