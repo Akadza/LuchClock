@@ -258,10 +258,8 @@ void handleSettingsPost(){
      !readSetting("noMotionWarnSec",next.noMotionWarnSec) ||
      !readSetting("autoStepMin",next.autoStepMin) ||
      !readSetting("wifiReconnectMs",next.wifiReconnectMs) ||
-     !readSetting("wifiDiagnosticMs",next.wifiDiagnosticMs) ||
      !readSetting("ntpStaleSec",next.ntpStaleSec) ||
      !readSetting("encoderPollMs",next.encoderPollMs) ||
-     !readSetting("encoderProbeMs",next.encoderProbeMs) ||
      !readSetting("encoderStableSamples",next.encoderStableSamples)){
     sendResult({400,"Некорректные параметры"});
     return;
