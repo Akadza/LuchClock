@@ -1,7 +1,8 @@
 #pragma once
 #include <Arduino.h>
 #include "../system_settings.h"
-struct CommandResult { int status; const char* message; };
+enum class ResultCode { Ok, Invalid, Blocked, Failed };
+struct CommandResult { ResultCode code; const char* message; };
 struct ModeState {
  String mode; bool manual, transition, autoReady, canForward, canReverse, canStop, canAuto, calibrationAllowed, settingsAllowed;
  unsigned long waitMs, motorLimitMs;
