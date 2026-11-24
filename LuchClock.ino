@@ -17,7 +17,7 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v1.15");
+  Serial.println("LuchClock v" FIRMWARE_VERSION);
   Serial.println("==================");
 
   motorSetup(); // Сначала гарантируем LOW на D5.
@@ -40,15 +40,15 @@ void loop() {
 
   switch (event) {
     case TIME_EVENT_FIRST_SYNC:
-      eventAdd("Получено точное время NTP");
+      eventAdd("Получено точное время NTP","NTP_SYNC");
       break;
 
     case TIME_EVENT_STALE:
-      eventAdd("Предупреждение: NTP давно не синхронизировался");
+      eventAdd("NTP давно не синхронизировался","NTP_STALE","warning");
       break;
 
     case TIME_EVENT_RESTORED:
-      eventAdd("Синхронизация NTP восстановлена");
+      eventAdd("Синхронизация NTP восстановлена","NTP_RESTORED");
       break;
 
     default:
