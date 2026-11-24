@@ -203,8 +203,8 @@ void handleEvents() {
     json += F("\",\"message\":\"");
     json += jsonEscape(eventAt(i).message);
 
-    json += F("\",\"code\":\"");json+=eventAt(i).code;
-    json += F("\",\"level\":\"");json+=eventAt(i).level;
+    json += F("\",\"code\":\"");json+=eventCodeText(eventAt(i).code);
+    json += F("\",\"level\":\"");json+=eventLevelText(eventAt(i).level);
     json += F("\"}");
   }
 
