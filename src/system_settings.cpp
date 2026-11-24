@@ -16,6 +16,7 @@ struct StoredSettings {
   RuntimeSettings values;
   uint32_t checksum;
 };
+static_assert(sizeof(StoredSettings)==64,"Settings layout changed");
 static uint32_t checksum(const StoredSettings& s) {
   const uint8_t* p = reinterpret_cast<const uint8_t*>(&s);
   uint32_t hash = 2166136261UL;
@@ -113,7 +114,7 @@ void settingsSetup() {
       migrated.autoStepMin=legacy.values.autoStepMin;
       if(settingsValidate(migrated)){
         runtimeSettings=migrated;
-        Serial.println(F("[SETTINGS] Migrated v1 settings in RAM; save to persist v2"));
+        Serial.println(F("[SETTINGS] Migrated v1 settings in RAM; save to persist current format"));
       }else Serial.println(F("[SETTINGS] Defaults loaded (legacy invalid)"));
     }else Serial.println(F("[SETTINGS] Defaults loaded"));
   }
@@ -124,8 +125,13 @@ bool settingsSave() {
   stored.version=SETTINGS_FORMAT_VERSION;
   stored.values=runtimeSettings;
   stored.checksum=checksum(stored);
+  StoredSettings previous={};
+  storage().get(0,previous);
+  if(memcmp(&previous,&stored,sizeof(stored))==0)return true;
   storage().put(0,stored);
-  return storage().commit();
+  if(storage().commit())return true;
+  storage().put(0,previous);
+  return false;
 }
 
 bool settingsPersistedMatches(){
