@@ -119,7 +119,7 @@ void handleStatus() {
   json.reserve(560);
 
   json += F("{\"device\":\"");json+=jsonEscape(DEVICE_NAME);json+=F("\",");
-  json += F("\"version\":\"1.9\",");
+  json += F("\"version\":\"1.10\",");
 
   json += F("\"wifi\":");
   json += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
@@ -146,8 +146,6 @@ void handleStatus() {
   json += String(calibrationSaved()?calibrationMinutes():encoderMinutes());
   json += F(",\"calibration_saved\":");json += calibrationSaved()?"true":"false";
   json += F(",\"calibration_offset\":");json += String(calibrationOffset());
-  json += F(",\"calibration_pending\":");json += calibrationPending()?"true":"false";
-  json += F(",\"calibration_candidate\":");json += String(calibrationPendingOffset());
 
   json += F(",\"motor_run_ms\":");json += String(motorRunElapsedMs());
   json += F(",\"motor_limit_ms\":");json += String((manualMode?runtimeSettings.manualLimitSec:runtimeSettings.autoLimitSec)*1000UL);
@@ -225,7 +223,6 @@ void handleMode() {
     server.send(409,"text/plain; charset=utf-8","Сначала сбросьте аварию в выключенном режиме");return;
   }
   if (mode == "off") {
-    calibrationDiscard();
     motorStop();currentMode="off";manualMode=false;autoReady=false;modeTransition=false;
     motorSetAutoMode(false);
     webAddEvent("Режим выключен");
@@ -236,7 +233,6 @@ void handleMode() {
       return;
     }
     if (currentMode != "manual") {
-      calibrationDiscard();
       motorStop();
       manualMode = true;
       currentMode = "manual";
@@ -253,7 +249,6 @@ void handleMode() {
       return;
     }
     if (currentMode != "auto") {
-      calibrationDiscard();
       motorStop();
       manualMode = false;
       currentMode = "auto";
@@ -321,7 +316,6 @@ void handleCommand() {
     return;
   }
 
-  calibrationDiscard();
   webAddEvent(String("Ручная команда: ") + action);
   server.send(
     200,
@@ -449,29 +443,17 @@ static bool calibrationTimeAllowed(uint8_t& minute){
   minute=(uint8_t)local.tm_min;
   return true;
 }
-void handleCalibrationPreview(){
-  calibrationDiscard();
+void handleCalibration(){
   if(!calibrationAllowed()){
     server.send(409,"text/plain; charset=utf-8","Нужен ручной режим, остановленный двигатель, исправный энкодер и актуальный NTP");return;
   }
-  uint8_t minute=0,offset=0;
+  uint8_t minute=0;
   if(!calibrationTimeAllowed(minute)){
-    server.send(409,"text/plain; charset=utf-8","Слишком близко к смене минуты: повторите между 10-й и 49-й секундой");return;
+    const unsigned guard=runtimeSettings.calibrationGuardSec;
+    server.send(409,"text/plain; charset=utf-8",String("Калибровка разрешена с ")+guard+" по "+(59U-guard)+" секунду");return;
   }
-  const int16_t position=encoderPosition;
-  if(!calibrationPreview((uint32_t)(time(nullptr)/60),position,offset)){
-    server.send(409,"text/plain; charset=utf-8","Не удалось вычислить смещение");return;
-  }
-  String json=String("{\"offset\":")+String(offset)+",\"minute\":"+String(minute)+",\"position\":"+String(position)+"}";
-  server.send(200,"application/json",json);
-}
-void handleCalibrationSave(){
-  if(!calibrationAllowed() || !calibrationPending()){
-    server.send(409,"text/plain; charset=utf-8","Нет допустимой подготовленной калибровки");return;
-  }
-  // Сохранение разрешено только в ту же минуту, что и расчёт.
-  if(!calibrationCommit((uint32_t)(time(nullptr)/60),encoderPosition)){
-    server.send(409,"text/plain; charset=utf-8","Калибровка устарела, энкодер повернулся или запись flash не удалась");return;
+  if(!calibrationSave(minute,encoderPosition)){
+    server.send(500,"text/plain; charset=utf-8","Не удалось сохранить калибровку");return;
   }
   webAddEvent("Калибровка энкодера сохранена");
   server.send(200,"application/json","{\"ok\":true}");
@@ -505,8 +487,7 @@ void webSetup() {
   server.on("/api/settings", HTTP_GET, handleSettingsGet);
   server.on("/api/settings", HTTP_POST, handleSettingsPost);
   server.on("/api/reset-fault", HTTP_POST, handleFaultReset);
-  server.on("/api/calibration/preview", HTTP_POST, handleCalibrationPreview);
-  server.on("/api/calibration/save", HTTP_POST, handleCalibrationSave);
+  server.on("/api/calibration", HTTP_POST, handleCalibration);
 
   server.onNotFound([]() {
     server.send(
@@ -518,7 +499,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.9 started");
+  Serial.println("[WEB] HTTP server v1.10 started");
 }
 
 void webLoop() {
@@ -526,7 +507,6 @@ void webLoop() {
   if (!encoderNowValid && currentMode!="off") {
     // При потере датчика во время движения motorLoop уже фиксирует аварию.
     // Режим OFF сохраняет аварийную блокировку до ручного сброса.
-    calibrationDiscard();
     motorStop();currentMode="off";manualMode=false;autoReady=false;
     modeTransition=false;motorSetAutoMode(false);
     webAddEvent("Энкодер недоступен: переход в Выключен");
