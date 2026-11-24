@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "../encoder/encoder_reader.h"
+#include "../encoder/encoder_calibration.h"
 #include "../motor/motor_controller.h"
 #include "../network/time_manager.h"
 class EncoderAdapter final: public IEncoder {
@@ -12,8 +13,8 @@ public:
  int16_t encoderRawPosition() override {return ::encoderRawPosition();}
  int16_t encoderCalibratedPosition() override {return ::encoderCalibratedPosition();}
  int encoderMinutes() override {return ::encoderMinutes();}
- uint8_t address() override {return ::encoderAddress;}
- uint8_t raw() override {return ::encoderRaw;}
+ uint8_t address() override {return ::encoderAddressValue();}
+ uint8_t raw() override {return ::encoderRawValue();}
 };
 IEncoder& encoder(){static EncoderAdapter instance;return instance;}
 class MotorAdapter final: public IMotor {
@@ -58,3 +59,14 @@ public:
  String ip() override {return WiFi.localIP().toString();}
 };
 INetworkStatus& networkStatus(){static NetworkStatusAdapter instance;return instance;}
+
+class CalibrationAdapter final:public ICalibration {
+public:
+ bool saved() override{return calibrationSaved();}
+ uint8_t offset() override{return calibrationOffset();}
+ int8_t signedOffset() override{return calibrationSignedOffset();}
+ bool needed(uint8_t minute,int16_t raw) override{return calibrationNeeded(minute,raw);}
+ bool save(uint8_t minute,int16_t raw) override{return calibrationSave(minute,raw);}
+ bool timeAllowed(uint8_t& minute) override{return calibrationTimeAllowed(minute);}
+};
+ICalibration& calibration(){static CalibrationAdapter instance;return instance;}
