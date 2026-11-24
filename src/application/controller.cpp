@@ -26,7 +26,7 @@ static bool modeIsReady() {
 static bool calibrationReady(){
  return (currentMode=="manual" || currentMode=="off") && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderValid() && clockTime().timeIsFresh();
 }
-static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibrationTimeAllowed(minute);}
+static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibrationTimeAllowed(minute) && calibrationNeeded(minute,encoder().encoderRawPosition());}
 static bool settingsAllowed(){return currentMode!="auto" && motor().motorState()==MOTOR_STOPPED && !modeTransition;}
 class Controller final:public IController {
 public:
@@ -149,7 +149,10 @@ return {200,""};}
  CommandResult calibrate() override {
  if(!calibrationReady())return {409,"Калибровка недоступна"};
  uint8_t minute=0;if(!calibrationTimeAllowed(minute))return {409,""};
- if(!calibrationSave(minute,encoder().encoderRawPosition()))return {500,"Не удалось сохранить калибровку"};
+ const int16_t raw=encoder().encoderRawPosition();
+ if(raw<0 || raw>=128)return {409,"Калибровка недоступна"};
+ if(!calibrationNeeded(minute,raw))return {409,""};
+ if(!calibrationSave(minute,raw))return {500,"Не удалось сохранить калибровку"};
  eventAdd("Калибровка энкодера сохранена","CALIBRATION_SAVED","info");return {200,""};
  }
  CommandResult resetFault() override {
