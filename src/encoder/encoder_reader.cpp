@@ -18,8 +18,8 @@ static const uint8_t encoderCodes[128] PROGMEM = {
   253, 252, 248, 232, 224, 226, 98, 96, 32, 33, 37, 53, 61, 60, 188, 190,
   254, 126, 124, 116, 112, 113, 49, 48, 16, 144, 146, 154, 158, 30, 94, 95
 };
-uint8_t encoderAddress = 0;
-uint8_t encoderRaw = 255;
+static uint8_t encoderAddress = 0;
+static uint8_t encoderRaw = 255;
 static int16_t encoderPosition = -1;
 static uint8_t encoderCandidate = 255;
 static uint8_t encoderStableCount = 0;
@@ -98,3 +98,6 @@ int encoderMinutes(){
   const int16_t position=encoderCalibratedPosition();
   return position>=0?position*60/128:-1;
 }
+
+uint8_t encoderAddressValue(){return encoderAddress;}
+uint8_t encoderRawValue(){return encoderRaw;}
