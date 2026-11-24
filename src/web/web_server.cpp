@@ -75,9 +75,10 @@ void handleStatus() {
   json.reserve(1600);
 
   json += F("{\"device\":\"");json+=jsonEscape(snapshot.device);json+=F("\",");
-  json += F("\"version\":\"1.15\",");
+  json += F("\"version\":\"" FIRMWARE_VERSION "\",\"api_version\":");
 
-  json += F("\"wifi\":");
+  json += String(API_VERSION);
+  json += F(",\"wifi\":");
   json += (snapshot.wifi) ? "true" : "false";
 
   json += F(",\"ip\":\"");
@@ -98,7 +99,7 @@ void handleStatus() {
   json += String(snapshot.encoderRaw);
   json += F(",\"encoder_position\":");
   json += String(snapshot.encoderPosition);
-  json += F(",\"encoder_raw_position\":");json += String(snapshot.snapshot.encoderRawPosition);
+  json += F(",\"encoder_raw_position\":");json += String(snapshot.encoderRawPosition);
   json += F(",\"calibration_allowed\":");json += state.calibrationAllowed?"true":"false";
   json += F(",\"encoder_minutes\":");
   json += String(snapshot.encoderMinutes);
@@ -127,7 +128,7 @@ void handleStatus() {
   json += snapshot.lastSync;
 
   json += F("\",\"ntp_age_seconds\":");
-  json += String(timeSyncAgeSeconds());
+  json += String(snapshot.ntpAge);
 
   json += F(",\"motor_state\":\"");
   json += snapshot.motorState;
@@ -152,6 +153,10 @@ void handleStatus() {
   json += F(",\"can_auto\":");
   json += state.canAuto ? "true" : "false";
 
+  json += F(",\"can_manual\":");json += state.canManual?"true":"false";
+  json += F(",\"can_off\":");json += state.canOff?"true":"false";
+  json += F(",\"can_reset_fault\":");json += state.canResetFault?"true":"false";
+  json += F(",\"show_fault_reset\":");json += state.showFaultReset?"true":"false";
   json += F(",\"settings_allowed\":");json += state.settingsAllowed?"true":"false";
   json += F("}");
 
@@ -166,7 +171,7 @@ void handleStatus() {
 
 static void sendResult(CommandResult r){
  if(r.status==200)server.send(200,"application/json","{\"ok\":true}");
- else server.send(r.status,"text/plain; charset=utf-8",r.message);
+ else {String json=F("{\"ok\":false,\"code\":\"");json+=r.status==400?"INVALID_REQUEST":r.status==409?"OPERATION_BLOCKED":"INTERNAL_ERROR";json+=F("\",\"message\":\"");json+=jsonEscape(r.message);json+=F("\"}");server.send(r.status,"application/json; charset=utf-8",json);}
 }
 void handleMode(){if(!server.hasArg("value")){sendResult({400,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
 void handleCommand(){if(!server.hasArg("action")){sendResult({400,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
@@ -195,6 +200,8 @@ void handleEvents() {
     json += F("\",\"message\":\"");
     json += jsonEscape(eventAt(i).message);
 
+    json += F("\",\"code\":\"");json+=eventAt(i).code;
+    json += F("\",\"level\":\"");json+=eventAt(i).level;
     json += F("\"}");
   }
 
@@ -254,12 +261,12 @@ void handleSettingsPost(){
      !readSetting("encoderPollMs",next.encoderPollMs) ||
      !readSetting("encoderProbeMs",next.encoderProbeMs) ||
      !readSetting("encoderStableSamples",next.encoderStableSamples)){
-    server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
+    sendResult({400,"Некорректные параметры"});
     return;
   }
   const String operation=server.arg("operation");
   if(operation!="apply" && operation!="save"){
-    server.send(400,"text/plain","Invalid operation");return;
+    sendResult({400,"Invalid operation"});return;
   }
   sendResult(controller().changeSettings(next,operation=="save"));
 }
@@ -286,7 +293,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.15 started");
+  Serial.println("[WEB] HTTP server v" FIRMWARE_VERSION " started");
 }
 
 void webLoop(){server.handleClient();}
