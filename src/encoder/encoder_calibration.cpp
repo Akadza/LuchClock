@@ -1,9 +1,8 @@
 #include "encoder_calibration.h"
-#include "encoder_reader.h"
 #include "../system_settings.h"
 #include "../storage/storage.h"
 #include <time.h>
-#include "../network/time_manager.h"
+#include "../application/hardware.h"
 
 struct CalibrationRecord {
   uint32_t magic;
@@ -58,7 +57,7 @@ bool calibrationSave(uint8_t minute,int16_t rawPosition){
 
 int8_t calibrationSignedOffset(){return storedOffset>=64?(int16_t)storedOffset-128:storedOffset;}
 bool calibrationTimeAllowed(uint8_t& minute){
-  if(!timeIsFresh())return false;
+  if(!clockTime().timeIsFresh())return false;
   time_t now=time(nullptr);
   struct tm local={};
   if(!localtime_r(&now,&local))return false;
