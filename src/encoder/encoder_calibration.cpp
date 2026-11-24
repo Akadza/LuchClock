@@ -1,7 +1,7 @@
 #include "encoder_calibration.h"
 #include "encoder_reader.h"
 #include "../system_settings.h"
-#include <EEPROM.h>
+#include "../storage/storage.h"
 #include <time.h>
 #include "../network/time_manager.h"
 
@@ -20,7 +20,7 @@ static_assert(sizeof(CalibrationRecord)+CAL_EEPROM_OFFSET<=SETTINGS_EEPROM_BYTES
 
 void calibrationSetup(){
   CalibrationRecord r={};
-  EEPROM.get(CAL_EEPROM_OFFSET,r);
+  storage().get(CAL_EEPROM_OFFSET,r);
   storedValid=(r.magic==CAL_MAGIC && r.version==1 && r.offset<128 &&
                r.check==(uint8_t)(r.offset ^ 0xA5));
   storedOffset=storedValid?r.offset:0;
@@ -36,11 +36,11 @@ bool calibrationSave(uint8_t minute,int16_t rawPosition){
   const uint8_t offset=(target+128U-rawPosition)%128U;
   if(storedValid && storedOffset==offset)return true;
   CalibrationRecord previous={};
-  EEPROM.get(CAL_EEPROM_OFFSET,previous);
+  storage().get(CAL_EEPROM_OFFSET,previous);
   CalibrationRecord r={CAL_MAGIC,1,offset,(uint8_t)(offset ^ 0xA5),0};
-  EEPROM.put(CAL_EEPROM_OFFSET,r);
-  if(!EEPROM.commit()){
-    EEPROM.put(CAL_EEPROM_OFFSET,previous);
+  storage().put(CAL_EEPROM_OFFSET,r);
+  if(!storage().commit()){
+    storage().put(CAL_EEPROM_OFFSET,previous);
     return false;
   }
   storedOffset=offset;
