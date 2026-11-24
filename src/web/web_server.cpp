@@ -103,6 +103,8 @@ void handleStatus() {
   json += F(",\"calibration_allowed\":");json += state.calibrationAllowed?"true":"false";
   json += F(",\"encoder_minutes\":");
   json += String(snapshot.encoderMinutes);
+  json += F(",\"calibration_current\":");json += snapshot.calibrationCurrent?"true":"false";
+  json += F(",\"clock_ms\":");json += String((unsigned long)snapshot.localClockMs);
   json += F(",\"calibration_saved\":");json += snapshot.calibrationSaved?"true":"false";
   json += F(",\"calibration_offset\":");json += String(snapshot.calibrationOffset);
   json += F(",\"calibration_signed_offset\":");json += String(snapshot.calibrationSignedOffset);
