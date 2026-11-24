@@ -20,6 +20,8 @@ struct ControllerState {
  int encoderRawPosition;
  int encoderMinutes;
  bool calibrationSaved;
+ bool calibrationCurrent;
+ uint64_t localClockMs;
  int calibrationOffset;
  int calibrationSignedOffset;
  unsigned long motorRun;
