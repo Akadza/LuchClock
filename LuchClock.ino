@@ -5,6 +5,8 @@
 #include "src/network/wifi_manager.h"
 #include "src/network/time_manager.h"
 #include "src/web/web_server.h"
+#include "src/application/controller.h"
+#include "src/application/event_logger.h"
 #include "src/motor/motor_controller.h"
 #include "src/encoder/encoder_reader.h"
 #include "src/encoder/encoder_calibration.h"
@@ -15,7 +17,7 @@ void setup() {
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v1.12");
+  Serial.println("LuchClock v1.13");
   Serial.println("==================");
 
   motorSetup(); // Сначала гарантируем LOW на D5.
@@ -24,6 +26,7 @@ void setup() {
   encoderSetup();
   wifiSetup();
   timeSetup();
+  controllerSetup();
   webSetup();
 
   Serial.print("[SYSTEM] Device: ");Serial.println(DEVICE_NAME);
@@ -37,15 +40,15 @@ void loop() {
 
   switch (event) {
     case TIME_EVENT_FIRST_SYNC:
-      webAddEvent("Получено точное время NTP");
+      eventAdd("Получено точное время NTP");
       break;
 
     case TIME_EVENT_STALE:
-      webAddEvent("Предупреждение: NTP давно не синхронизировался");
+      eventAdd("Предупреждение: NTP давно не синхронизировался");
       break;
 
     case TIME_EVENT_RESTORED:
-      webAddEvent("Синхронизация NTP восстановлена");
+      eventAdd("Синхронизация NTP восстановлена");
       break;
 
     default:
@@ -54,6 +57,7 @@ void loop() {
 
   encoderLoop();
   motorLoop();
+  controllerLoop();
   webLoop();
 
   yield();
