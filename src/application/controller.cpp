@@ -91,7 +91,7 @@ public:
   if (mode == "off") {
     motor().motorStop();currentMode=ClockMode::Off;autoReady=false;modeTransition=false;
     motor().motorSetAutoMode(false);
-    eventAdd("Режим выключен","MODE_OFF","info");
+    eventAdd("Режим выключен",EventCode::MODE_OFF,EventLevel::Info);
   } else if (mode == "manual") {
     // Запрет переключения во время защитной паузы действует и на API.
     if (!(currentMode==ClockMode::Manual) && (modeTransition || motor().motorState() != MOTOR_STOPPED)) {
@@ -104,7 +104,7 @@ public:
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
-      eventAdd("Переключение в ручной режим","MODE_MANUAL","info");
+      eventAdd("Переключение в ручной режим",EventCode::MODE_MANUAL,EventLevel::Info);
       Serial.println("[MODE] Manual");
     }
   } else if (mode == "auto") {
@@ -118,7 +118,7 @@ public:
       autoReady = false;
       modeTransition = true;
       modeChangedAt = millis();
-      eventAdd("Переключение в автоматический режим","MODE_AUTO","info");
+      eventAdd("Переключение в автоматический режим",EventCode::MODE_AUTO,EventLevel::Info);
       Serial.println("[MODE] Auto");
     }
   } else {
@@ -145,7 +145,7 @@ return {ResultCode::Ok,""};}
     return {ResultCode::Blocked,"Motor command rejected (fault or invalid state)"};
   }
 
-  eventAdd(String("Ручная команда: ") + action,"MANUAL_COMMAND");
+  eventAdd(String("Ручная команда: ") + action,EventCode::MANUAL_COMMAND);
 return {ResultCode::Ok,""};}
  CommandResult calibrate() override {
  if(!calibrationReady())return {ResultCode::Blocked,"Калибровка недоступна"};
@@ -154,17 +154,17 @@ return {ResultCode::Ok,""};}
  if(raw<0 || raw>=128)return {ResultCode::Blocked,"Калибровка недоступна"};
  if(!calibration().needed(minute,raw))return {ResultCode::Blocked,""};
  if(!calibration().save(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
- eventAdd("Калибровка энкодера сохранена","CALIBRATION_SAVED","info");return {ResultCode::Ok,""};
+ eventAdd("Калибровка энкодера сохранена",EventCode::CALIBRATION_SAVED,EventLevel::Info);return {ResultCode::Ok,""};
  }
  CommandResult resetFault() override {
  if(currentMode!=ClockMode::Off || !encoder().encoderValid() || !motor().motorResetAutoFault())return {ResultCode::Blocked,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
- eventAdd("Авария сброшена оператором","FAULT_RESET","info");return {ResultCode::Ok,""};
+ eventAdd("Авария сброшена оператором",EventCode::FAULT_RESET,EventLevel::Info);return {ResultCode::Ok,""};
  }
  CommandResult changeSettings(const RuntimeSettings& next,bool save) override {
  if(!settingsAllowed())return {ResultCode::Blocked,"Остановите двигатель и дождитесь окончания паузы"};
  if(!settingsValidate(next))return {ResultCode::Invalid,"Некорректные параметры"};
  if(!settingsChange(next,save))return {ResultCode::Failed,"Не удалось сохранить настройки"};
- eventAdd(save?"Настройки сохранены":"Настройки применены временно",save?"SETTINGS_SAVED":"SETTINGS_APPLIED");return {ResultCode::Ok,""};
+ eventAdd(save?"Настройки сохранены":"Настройки применены временно",save?EventCode::SETTINGS_SAVED:EventCode::SETTINGS_APPLIED);return {ResultCode::Ok,""};
  }
 };
 static Controller instance;
@@ -178,7 +178,7 @@ void controllerSetup(){
   previousAutoFault=false;
   previousManualPause=0;
 
-  eventAdd("Контроллер запущен","BOOT","info");
+  eventAdd("Контроллер запущен",EventCode::BOOT,EventLevel::Info);
 
 }
 void controllerLoop(){
@@ -188,23 +188,23 @@ void controllerLoop(){
     // Режим OFF сохраняет аварийную блокировку до ручного сброса.
     motor().motorStop();currentMode=ClockMode::Off;autoReady=false;
     modeTransition=false;motor().motorSetAutoMode(false);
-    eventAdd("Энкодер недоступен: переход в Выключен","ENCODER_UNAVAILABLE","warning");
+    eventAdd("Энкодер недоступен: переход в Выключен",EventCode::ENCODER_UNAVAILABLE,EventLevel::Warning);
   }
   const bool fault=motor().motorAutoFault();
   if(fault && !previousAutoFault){
     String reason=motor().motorFaultReason();
     eventAdd(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
       reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
-      "Критическая ошибка: привод заблокирован", reason=="no_motion"?"NO_MOTION":reason=="encoder_lost"?"ENCODER_LOST":"MOTOR_FAULT","critical");
+      "Критическая ошибка: привод заблокирован", reason=="no_motion"?EventCode::NO_MOTION:reason=="encoder_lost"?EventCode::ENCODER_LOST:EventCode::MOTOR_FAULT,EventLevel::Critical);
   }
   if(fault && currentMode!=ClockMode::Off){
     motor().motorStop();currentMode=ClockMode::Off;autoReady=false;
     modeTransition=false;motor().motorSetAutoMode(false);
-    eventAdd("Аварийный переход в Выключен","FAULT_MODE_OFF","critical");
+    eventAdd("Аварийный переход в Выключен",EventCode::FAULT_MODE_OFF,EventLevel::Critical);
   }
   previousAutoFault=fault;
   const unsigned long manualPause=motor().motorManualPauseRemainingMs();
-  if(manualPause && !previousManualPause)eventAdd("Достигнут лимит ручной работы: защитная пауза","MANUAL_LIMIT","warning");
+  if(manualPause && !previousManualPause)eventAdd("Достигнут лимит ручной работы: защитная пауза",EventCode::MANUAL_LIMIT,EventLevel::Warning);
   previousManualPause=manualPause;
   if (modeTransition && motor().motorState() != MOTOR_WAITING &&
       (modeWaitRemainingMs() == 0 || motor().motorState() == MOTOR_FAULT)) {
