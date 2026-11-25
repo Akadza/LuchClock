@@ -10,6 +10,7 @@ class EncoderAdapter final: public IEncoder {
 public:
  bool encoderConnected() override {return ::encoderConnected();}
  bool encoderValid() override {return ::encoderValid();}
+ bool encoderHealthy() override {return ::encoderHealthy();}
  int16_t encoderRawPosition() override {return ::encoderRawPosition();}
  int16_t encoderCalibratedPosition() override {return ::encoderCalibratedPosition();}
  int encoderMinutes() override {return ::encoderMinutes();}

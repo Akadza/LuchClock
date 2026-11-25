@@ -6,6 +6,7 @@ public:
  virtual ~IEncoder()=default;
  virtual bool encoderConnected()=0;
  virtual bool encoderValid()=0;
+ virtual bool encoderHealthy()=0;
  virtual int16_t encoderRawPosition()=0;
  virtual int16_t encoderCalibratedPosition()=0;
  virtual int encoderMinutes()=0;

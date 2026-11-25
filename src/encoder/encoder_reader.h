@@ -11,4 +11,5 @@ void encoderSetup();
 void encoderLoop();
 bool encoderConnected();
 bool encoderValid();
+bool encoderHealthy();
 int encoderMinutes();

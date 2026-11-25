@@ -120,6 +120,7 @@ void encoderLoop() {
 
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
+bool encoderHealthy() { return encoderValid() && filter.healthy(); }
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
   return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;

@@ -45,7 +45,7 @@ bool motorAutoFault(){return autoFault;}
 const char* motorFaultReason(){return faultReason;}
 void motorSetAutoMode(bool enabled){autoMode=enabled;}
 bool motorResetAutoFault(){
-  if(!autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
+  if(!encoder().encoderHealthy() || !autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
   autoFault=false;faultReason="";
   if(state==MOTOR_FAULT)state=MOTOR_STOPPED;
   Serial.println(F("[MOTOR] Auto fault reset (no restart)"));
@@ -53,7 +53,7 @@ bool motorResetAutoFault(){
 }
 bool motorCanForward(){
   return !autoMode && !autoFault && state==MOTOR_STOPPED &&
-    motorManualPauseRemainingMs()==0 && encoder().encoderValid();
+    motorManualPauseRemainingMs()==0 && encoder().encoderHealthy();
 }
 bool motorCanReverse(){return false;}
 bool motorCanStop(){return true;}
