@@ -16,6 +16,8 @@ int main() {
     }
     CHECK(position_math::advanceClockPosition(0,INT32_MAX,out) && out==524287);
     CHECK(position_math::advanceClockPosition(0,INT32_MIN,out) && out==262144);
+    CHECK(position_math::advanceClockPosition(1,INT32_MAX,out) && out==524288);
+    CHECK(position_math::advanceClockPosition(786431,INT32_MAX,out) && out==524286);
     out=123; CHECK(!position_math::advanceClockPosition(UINT32_MAX,1,out) && out==123);
     std::cout << "Clock position OK\n";
 }
