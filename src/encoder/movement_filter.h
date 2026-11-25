@@ -20,7 +20,13 @@ public:
         budget_.accrue(elapsedMs);
         int32_t delta;
         if (!angularDelta(angle_, sample, delta) || delta < 0) return reject();
-        if (!budget_.consume(static_cast<uint16_t>(delta))) return reject();
+        MovementBudget candidate = budget_;
+        if (!candidate.consume(static_cast<uint16_t>(delta))) return reject();
+        if (suspicious_ && recoveryCount_ == 0) {
+            recoveryCount_ = 1;
+            return false;
+        }
+        budget_ = candidate;
         if (suspicious_ && ++recoveryCount_ >= 2) {
             suspicious_ = false;
             badMs_ = 0;
