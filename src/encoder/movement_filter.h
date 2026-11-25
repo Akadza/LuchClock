@@ -7,6 +7,14 @@ public:
     MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0)
         : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false), forwardPending_(false), forwardCandidate_(initial) {}
     bool valid() const { return valid_; }
+    bool healthy() const { return valid_ && !suspicious_; }
+    void invalidate() {
+        valid_ = false;
+        suspicious_ = true;
+        lastDelta_ = 0;
+        recoveryCount_ = 0;
+        forwardPending_ = false;
+    }
     uint16_t angle() const { return angle_; }
     uint16_t lastDelta() const { return lastDelta_; }
     bool update(uint16_t sample, uint32_t elapsedMs) {
