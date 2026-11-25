@@ -4,8 +4,8 @@
 namespace position_math {
 class MovementFilter {
 public:
-    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX)
-        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0) {}
+    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0)
+        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false) {}
     bool valid() const { return valid_; }
     uint16_t angle() const { return angle_; }
     uint16_t lastDelta() const { return lastDelta_; }
@@ -19,12 +19,32 @@ public:
         }
         budget_.accrue(elapsedMs);
         int32_t delta;
-        if (!angularDelta(angle_, sample, delta) || delta < 0) return reject();
+        if (!angularDelta(angle_, sample, delta)) return reject();
+        if (delta < 0) {
+            if (!suspicious_ && reverseTolerance_ > 0 &&
+                static_cast<uint32_t>(-delta) <= reverseTolerance_) {
+                if (!reverseActive_) {
+                    reverseActive_ = true;
+                    reverseMs_ = 0;
+                } else {
+                    const uint32_t room = timeoutMs_ - reverseMs_;
+                    reverseMs_ += elapsedMs > room ? room : elapsedMs;
+                }
+                if (reverseMs_ < timeoutMs_) return false;
+            }
+            reverseActive_ = false;
+            return reject();
+        }
+        reverseActive_ = false;
+        reverseMs_ = 0;
         MovementBudget candidate = budget_;
         if (!candidate.consume(static_cast<uint16_t>(delta))) return reject();
-        if (suspicious_ && recoveryCount_ == 0) {
-            recoveryCount_ = 1;
-            return false;
+        if (suspicious_) {
+            if (recoveryCount_ == 0 || sample != recoveryCandidate_) {
+                recoveryCandidate_ = sample;
+                recoveryCount_ = 1;
+                return false;
+            }
         }
         budget_ = candidate;
         if (suspicious_ && ++recoveryCount_ >= 2) {
@@ -51,5 +71,9 @@ private:
     bool suspicious_;
     bool valid_;
     uint8_t recoveryCount_;
+    uint16_t recoveryCandidate_;
+    uint16_t reverseTolerance_;
+    uint32_t reverseMs_;
+    bool reverseActive_;
 };
 }

@@ -7,5 +7,11 @@ int main() {
     CHECK(!f.update(107*512, 5625));
     CHECK(!f.update(57*512, 25) && f.angle() == 56*512 && f.lastDelta() == 0);
     CHECK(f.update(57*512, 25) && f.angle() == 57*512 && f.lastDelta() == 512);
+    // Different plausible readings cannot confirm each other.
+    position_math::MovementFilter changing(56*512, 100, 1024, 100);
+    CHECK(!changing.update(107*512, 12000));
+    CHECK(!changing.update(57*512, 25) && changing.angle() == 56*512);
+    CHECK(!changing.update(58*512, 25) && changing.angle() == 56*512);
+    CHECK(changing.update(58*512, 25) && changing.angle() == 58*512 && changing.lastDelta() == 1024);
     std::cout << "Recovery OK\n";
 }
