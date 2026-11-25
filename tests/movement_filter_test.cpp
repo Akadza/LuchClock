@@ -20,5 +20,8 @@ int main() {
     CHECK(!magnetic.update(0, 160) && magnetic.angle() == 16);
     CHECK(magnetic.update(16, 0) && magnetic.angle() == 16);
     CHECK(magnetic.update(32, 0) && magnetic.angle() == 32);
+    CHECK(magnetic.lastDelta() == 16);
+    CHECK(!magnetic.update(64, 0) && magnetic.lastDelta() == 0);
+    CHECK(magnetic.update(32, 0) && magnetic.lastDelta() == 0);
     std::cout << "Movement filter OK\n";
 }
