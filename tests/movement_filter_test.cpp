@@ -28,5 +28,14 @@ int main() {
     CHECK(!faulty.update(64, 99) && faulty.valid());
     CHECK(!faulty.update(64, 1) && !faulty.valid());
     CHECK(!faulty.update(0, 0) && !faulty.valid() && faulty.angle() == 0 && faulty.lastDelta() == 0);
+    position_math::MovementFilter intermittent(0, 100, 16, 100);
+    CHECK(!intermittent.update(64, 25));
+    intermittent.update(0, 50);
+    CHECK(!intermittent.update(64, 50) && !intermittent.valid());
+    position_math::MovementFilter recovered(0, 100, 16, 100);
+    CHECK(!recovered.update(64, 25));
+    CHECK(recovered.update(0, 25));
+    CHECK(recovered.update(0, 25));
+    CHECK(!recovered.update(64, 50) && recovered.valid());
     std::cout << "Movement filter OK\n";
 }
