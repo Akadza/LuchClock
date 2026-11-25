@@ -15,4 +15,11 @@ inline bool angularDelta(uint16_t from, uint16_t to, int32_t& delta) {
     return true;
 }
 inline uint16_t applyOffset(uint16_t angle, uint16_t offset) { return static_cast<uint16_t>(uint32_t(angle) + uint32_t(offset)); }
+inline bool advanceClockPosition(uint32_t p, int32_t d, uint32_t& out) {
+    if (p >= 786432) return false;
+    int64_t next = (int64_t(p) + d) % 786432;
+    if (next < 0) next += 786432;
+    out = uint32_t(next);
+    return true;
+}
 }
