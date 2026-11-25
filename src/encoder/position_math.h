@@ -14,4 +14,5 @@ inline bool angularDelta(uint16_t from, uint16_t to, int32_t& delta) {
     delta = d;
     return true;
 }
+inline uint16_t applyOffset(uint16_t angle, uint16_t offset) { return static_cast<uint16_t>(uint32_t(angle) + uint32_t(offset)); }
 }
