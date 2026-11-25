@@ -5,7 +5,7 @@ namespace position_math {
 class MovementFilter {
 public:
     MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0)
-        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false) {}
+        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false), forwardPending_(false), forwardCandidate_(initial) {}
     bool valid() const { return valid_; }
     uint16_t angle() const { return angle_; }
     uint16_t lastDelta() const { return lastDelta_; }
@@ -21,6 +21,7 @@ public:
         int32_t delta;
         if (!angularDelta(angle_, sample, delta)) return reject();
         if (delta < 0) {
+            forwardPending_ = false;
             if (!suspicious_ && reverseTolerance_ > 0 &&
                 static_cast<uint32_t>(-delta) <= reverseTolerance_) {
                 if (!reverseActive_) {
@@ -37,8 +38,15 @@ public:
         }
         reverseActive_ = false;
         reverseMs_ = 0;
+        if (delta == 0) forwardPending_ = false;
         MovementBudget candidate = budget_;
         if (!candidate.consume(static_cast<uint16_t>(delta))) return reject();
+        if (!suspicious_ && delta > 0 &&
+            (!forwardPending_ || sample != forwardCandidate_)) {
+            forwardPending_ = true;
+            forwardCandidate_ = sample;
+            return false;
+        }
         if (suspicious_) {
             if (recoveryCount_ == 0 || sample != recoveryCandidate_) {
                 recoveryCandidate_ = sample;
@@ -47,6 +55,7 @@ public:
             }
         }
         budget_ = candidate;
+        forwardPending_ = false;
         if (suspicious_ && ++recoveryCount_ >= 2) {
             suspicious_ = false;
             badMs_ = 0;
@@ -58,6 +67,7 @@ public:
     }
 private:
     bool reject() {
+        forwardPending_ = false;
         recoveryCount_ = 0;
         suspicious_ = true;
         if (badMs_ >= timeoutMs_) valid_ = false;
@@ -75,5 +85,7 @@ private:
     uint16_t reverseTolerance_;
     uint32_t reverseMs_;
     bool reverseActive_;
+    bool forwardPending_;
+    uint16_t forwardCandidate_;
 };
 }
