@@ -1,5 +1,7 @@
 #include "encoder_reader.h"
 #include "encoder_calibration.h"
+#include "movement_filter.h"
+#include "clock_tracker.h"
 #include "../system_settings.h"
 #include <Wire.h>
 #include <pgmspace.h>
@@ -23,7 +25,17 @@ static uint8_t encoderRaw = 255;
 static int16_t encoderPosition = -1;
 static uint8_t encoderCandidate = 255;
 static uint8_t encoderStableCount = 0;
-static bool decoded = false;
+static position_math::MovementFilter filter(0, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+static position_math::ClockTracker tracker(0);
+static bool initialized = false;
+static void loseObservation() {
+  filter.invalidate();
+  tracker.loseContinuity();
+  initialized = false;
+  encoderPosition = -1;
+  encoderStableCount = 0;
+  encoderCandidate = 255;
+}
 static unsigned long encoderLastRead = 0;
 static unsigned long encoderLastProbe = 0;
 
@@ -33,10 +45,7 @@ static bool encoderProbe(uint8_t addr) {
 }
 static void encoderFindDevice() {
   encoderAddress = 0;
-  encoderPosition = -1;
-  decoded = false;
-  encoderStableCount = 0;
-  encoderCandidate = 255;
+  loseObservation();
   for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
     if (encoderProbe(addr)) { encoderAddress = addr; break; }
   }
@@ -65,34 +74,50 @@ void encoderLoop() {
     return;
   }
   if (now - encoderLastRead < settingsCurrent().encoderPollMs) return;
+  const uint32_t elapsed = now - encoderLastRead;
   encoderLastRead = now;
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
     encoderAddress = 0;
-    encoderPosition = -1;
-    decoded = false;
-    encoderStableCount = 0;
-    encoderCandidate = 255;
+    loseObservation();
     return;
   }
   const uint8_t value = (uint8_t)Wire.read();
-  if (value != encoderCandidate) {
-    encoderCandidate = value;
-    encoderStableCount = 1;
+  encoderRaw = value;
+  int16_t raw = -1;
+  for (int i = 0; i < 128; ++i) {
+    if (pgm_read_byte(&encoderCodes[i]) == value) { raw = i; break; }
+  }
+  uint16_t angle = 0;
+  if (!position_math::normalizePosition(raw, 128, angle)) {
+    encoderStableCount = 0;
+    if (initialized) {
+      filter.missing(elapsed);
+      if (!filter.valid()) loseObservation();
+    }
     return;
   }
-  if (encoderStableCount < settingsCurrent().encoderStableSamples) ++encoderStableCount;
-  if (encoderStableCount < settingsCurrent().encoderStableSamples) return;
-  if(decoded && encoderRaw==value)return;
-  decoded=true;
-  encoderRaw = value;
-  encoderPosition = -1;
-  for (int i = 0; i < 128; ++i) {
-    if (pgm_read_byte(&encoderCodes[i]) == value) {
-      encoderPosition = i;
-      break;
+  if (!initialized) {
+    if (value != encoderCandidate) {
+      encoderCandidate = value;
+      encoderStableCount = 0;
     }
+    if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+    tracker.beginObservation(angle);
+    encoderPosition = raw;
+    initialized = true;
+    return;
   }
+  if (filter.update(angle, elapsed)) {
+    if (!tracker.advance(filter.angle(), filter.lastDelta())) {
+      loseObservation();
+      return;
+    }
+    encoderPosition = filter.angle() / 512;
+  }
+  if (!filter.valid()) loseObservation();
 }
+
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
