@@ -3,6 +3,7 @@
 void calibrationSetup();
 bool calibrationSaved();
 uint8_t calibrationOffset();
+bool calibrationNeeded(uint8_t minute, int16_t rawPosition);
 bool calibrationSave(uint8_t minute, int16_t rawPosition);
 
 int8_t calibrationSignedOffset();

@@ -1,13 +1,22 @@
 #include "system_settings.h"
-#include <EEPROM.h>
+#include "storage/storage.h"
 #include <stddef.h>
-RuntimeSettings runtimeSettings;
+static RuntimeSettings runtimeSettings;
+const RuntimeSettings& settingsCurrent(){return runtimeSettings;}
+bool settingsChange(const RuntimeSettings& next,bool save){
+ if(!settingsValidate(next))return false;
+ const RuntimeSettings previous=runtimeSettings;
+ runtimeSettings=next;
+ if(save && !settingsSave()){runtimeSettings=previous;return false;}
+ return true;
+}
 struct StoredSettings {
   uint32_t magic;
   uint32_t version;
   RuntimeSettings values;
   uint32_t checksum;
 };
+static_assert(sizeof(StoredSettings)==64,"Settings layout changed");
 static uint32_t checksum(const StoredSettings& s) {
   const uint8_t* p = reinterpret_cast<const uint8_t*>(&s);
   uint32_t hash = 2166136261UL;
@@ -74,15 +83,15 @@ static uint32_t legacyChecksum(const LegacyStored& s){
 }
 void settingsSetup() {
   settingsDefaults(runtimeSettings);
-  EEPROM.begin(SETTINGS_EEPROM_BYTES);
+  storage().begin(SETTINGS_EEPROM_BYTES);
   StoredSettings stored={};
-  EEPROM.get(0,stored);
+  storage().get(0,stored);
   if (stored.magic==SETTINGS_MAGIC && stored.version==SETTINGS_FORMAT_VERSION &&
       stored.checksum==checksum(stored) && settingsValidate(stored.values)) {
     runtimeSettings=stored.values;
     Serial.println(F("[SETTINGS] Saved values loaded"));
   } else {
-    V2Stored old2={};EEPROM.get(0,old2);
+    V2Stored old2={};storage().get(0,old2);
     if(old2.magic==SETTINGS_MAGIC && old2.version==2UL && old2.checksum==v2Checksum(old2)){
       RuntimeSettings migrated=runtimeSettings;
       memcpy(&migrated,&old2.values,sizeof(V2Values));
@@ -93,7 +102,7 @@ void settingsSetup() {
       }
     }
     LegacyStored legacy={};
-    EEPROM.get(0,legacy);
+    storage().get(0,legacy);
     if(legacy.magic==SETTINGS_MAGIC && legacy.version==1UL &&
        legacy.checksum==legacyChecksum(legacy)){
       RuntimeSettings migrated=runtimeSettings;
@@ -105,7 +114,7 @@ void settingsSetup() {
       migrated.autoStepMin=legacy.values.autoStepMin;
       if(settingsValidate(migrated)){
         runtimeSettings=migrated;
-        Serial.println(F("[SETTINGS] Migrated v1 settings in RAM; save to persist v2"));
+        Serial.println(F("[SETTINGS] Migrated v1 settings in RAM; save to persist current format"));
       }else Serial.println(F("[SETTINGS] Defaults loaded (legacy invalid)"));
     }else Serial.println(F("[SETTINGS] Defaults loaded"));
   }
@@ -116,13 +125,18 @@ bool settingsSave() {
   stored.version=SETTINGS_FORMAT_VERSION;
   stored.values=runtimeSettings;
   stored.checksum=checksum(stored);
-  EEPROM.put(0,stored);
-  return EEPROM.commit();
+  StoredSettings previous={};
+  storage().get(0,previous);
+  if(memcmp(&previous,&stored,sizeof(stored))==0)return true;
+  storage().put(0,stored);
+  if(storage().commit())return true;
+  storage().put(0,previous);
+  return false;
 }
 
 bool settingsPersistedMatches(){
   StoredSettings stored={};
-  EEPROM.get(0,stored);
+  storage().get(0,stored);
   return stored.magic==SETTINGS_MAGIC && stored.version==SETTINGS_FORMAT_VERSION &&
     stored.checksum==checksum(stored) &&
     memcmp(&stored.values,&runtimeSettings,sizeof(RuntimeSettings))==0;

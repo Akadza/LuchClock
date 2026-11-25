@@ -12,7 +12,8 @@ static volatile bool ntpCallbackPending = false;
 static bool everSynchronized = false;
 static bool syncStale = false;
 
-static unsigned long lastSyncMillis = 0;
+static uint32_t lastTick = 0;
+static uint64_t syncAgeMs = 0;
 static time_t lastSyncEpoch = 0;
 
 // Вызывается ядром ESP8266 после установки времени.
@@ -25,6 +26,8 @@ void timeSetup() {
   everSynchronized = false;
   syncStale = false;
 
+  lastTick=millis();
+  syncAgeMs=0;
   settimeofday_cb(onTimeSet);
 
   configTime(
@@ -43,7 +46,7 @@ bool timeIsValid() {
 }
 
 bool timeIsFresh() {
-  return everSynchronized && !syncStale && timeIsValid();
+  return everSynchronized && syncAgeMs + uint32_t(millis()-lastTick) < uint64_t(settingsCurrent().ntpStaleSec)*1000 && timeIsValid();
 }
 
 unsigned long timeSyncAgeSeconds() {
@@ -51,7 +54,7 @@ unsigned long timeSyncAgeSeconds() {
     return 0;
   }
 
-  return (millis() - lastSyncMillis) / 1000UL;
+  return (syncAgeMs + uint32_t(millis()-lastTick)) / 1000ULL;
 }
 
 String formatLocalTime(time_t timestamp, const char* format) {
@@ -90,6 +93,9 @@ String timeLastSyncString() {
 }
 
 TimeEvent timeLoop() {
+  const uint32_t now=millis();
+  if(everSynchronized)syncAgeMs+=uint32_t(now-lastTick);
+  lastTick=now;
   if (ntpCallbackPending) {
     ntpCallbackPending = false;
 
@@ -100,7 +106,8 @@ TimeEvent timeLoop() {
       everSynchronized = true;
       syncStale = false;
 
-      lastSyncMillis = millis();
+      syncAgeMs = 0;
+      lastTick = millis();
       lastSyncEpoch = time(nullptr);
 
       Serial.print("[NTP] Time synchronized: ");
@@ -117,7 +124,7 @@ TimeEvent timeLoop() {
   }
 
   if (everSynchronized && !syncStale &&
-      millis() - lastSyncMillis >= (runtimeSettings.ntpStaleSec * 1000UL)) {
+      !timeIsFresh()) {
 
     syncStale = true;
 
@@ -126,5 +133,9 @@ TimeEvent timeLoop() {
     return TIME_EVENT_STALE;
   }
 
+  if(everSynchronized && syncStale && timeIsFresh()){
+    syncStale=false;
+    return TIME_EVENT_THRESHOLD_CHANGED;
+  }
   return TIME_EVENT_NONE;
 }

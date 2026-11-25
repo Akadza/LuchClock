@@ -12,15 +12,15 @@
 #include "src/encoder/encoder_calibration.h"
 
 void setup() {
+  motorSetup(); // Safe output before serial and delays.
   Serial.begin(115200);
   delay(100);
 
   Serial.println();
   Serial.println("==================");
-  Serial.println("LuchClock v1.14");
+  Serial.println("LuchClock v" FIRMWARE_VERSION);
   Serial.println("==================");
 
-  motorSetup(); // Сначала гарантируем LOW на D5.
   settingsSetup(); // Загрузка параметров из EEPROM.
   calibrationSetup(); // Загрузка сохранённого смещения энкодера.
   encoderSetup();
@@ -40,15 +40,19 @@ void loop() {
 
   switch (event) {
     case TIME_EVENT_FIRST_SYNC:
-      eventAdd("Получено точное время NTP");
+      eventAdd("Получено точное время NTP",EventCode::NTP_SYNC);
       break;
 
     case TIME_EVENT_STALE:
-      eventAdd("Предупреждение: NTP давно не синхронизировался");
+      eventAdd("NTP давно не синхронизировался",EventCode::NTP_STALE,EventLevel::Warning);
       break;
 
     case TIME_EVENT_RESTORED:
-      eventAdd("Синхронизация NTP восстановлена");
+      eventAdd("Синхронизация NTP восстановлена",EventCode::NTP_RESTORED);
+      break;
+
+    case TIME_EVENT_THRESHOLD_CHANGED:
+      eventAdd("Время соответствует новому порогу NTP");
       break;
 
     default:

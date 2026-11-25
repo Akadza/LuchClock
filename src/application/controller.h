@@ -1,10 +1,12 @@
 #pragma once
 #include <Arduino.h>
 #include "../system_settings.h"
-struct CommandResult { int status; const char* message; };
+enum class ResultCode { Ok, Invalid, Blocked, Failed };
+struct CommandResult { ResultCode code; const char* message; };
 struct ModeState {
  String mode; bool manual, transition, autoReady, canForward, canReverse, canStop, canAuto, calibrationAllowed, settingsAllowed;
  unsigned long waitMs, motorLimitMs;
+ bool canManual, canOff, canResetFault, showFaultReset;
 };
 struct ControllerState {
  ModeState mode;
@@ -19,6 +21,8 @@ struct ControllerState {
  int encoderRawPosition;
  int encoderMinutes;
  bool calibrationSaved;
+ bool calibrationCurrent;
+ uint32_t localClockMs;
  int calibrationOffset;
  int calibrationSignedOffset;
  unsigned long motorRun;

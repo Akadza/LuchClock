@@ -75,9 +75,10 @@ void handleStatus() {
   json.reserve(1600);
 
   json += F("{\"device\":\"");json+=jsonEscape(snapshot.device);json+=F("\",");
-  json += F("\"version\":\"1.14\",");
+  json += F("\"version\":\"" FIRMWARE_VERSION "\",\"api_version\":");
 
-  json += F("\"wifi\":");
+  json += String(API_VERSION);
+  json += F(",\"wifi\":");
   json += (snapshot.wifi) ? "true" : "false";
 
   json += F(",\"ip\":\"");
@@ -98,10 +99,12 @@ void handleStatus() {
   json += String(snapshot.encoderRaw);
   json += F(",\"encoder_position\":");
   json += String(snapshot.encoderPosition);
-  json += F(",\"encoder_raw_position\":");json += String(snapshot.snapshot.encoderRawPosition);
+  json += F(",\"encoder_raw_position\":");json += String(snapshot.encoderRawPosition);
   json += F(",\"calibration_allowed\":");json += state.calibrationAllowed?"true":"false";
   json += F(",\"encoder_minutes\":");
   json += String(snapshot.encoderMinutes);
+  json += F(",\"calibration_current\":");json += snapshot.calibrationCurrent?"true":"false";
+  json += F(",\"clock_ms\":");json += String((unsigned long)snapshot.localClockMs);
   json += F(",\"calibration_saved\":");json += snapshot.calibrationSaved?"true":"false";
   json += F(",\"calibration_offset\":");json += String(snapshot.calibrationOffset);
   json += F(",\"calibration_signed_offset\":");json += String(snapshot.calibrationSignedOffset);
@@ -127,7 +130,7 @@ void handleStatus() {
   json += snapshot.lastSync;
 
   json += F("\",\"ntp_age_seconds\":");
-  json += String(timeSyncAgeSeconds());
+  json += String(snapshot.ntpAge);
 
   json += F(",\"motor_state\":\"");
   json += snapshot.motorState;
@@ -152,6 +155,10 @@ void handleStatus() {
   json += F(",\"can_auto\":");
   json += state.canAuto ? "true" : "false";
 
+  json += F(",\"can_manual\":");json += state.canManual?"true":"false";
+  json += F(",\"can_off\":");json += state.canOff?"true":"false";
+  json += F(",\"can_reset_fault\":");json += state.canResetFault?"true":"false";
+  json += F(",\"show_fault_reset\":");json += state.showFaultReset?"true":"false";
   json += F(",\"settings_allowed\":");json += state.settingsAllowed?"true":"false";
   json += F("}");
 
@@ -165,11 +172,12 @@ void handleStatus() {
 }
 
 static void sendResult(CommandResult r){
- if(r.status==200)server.send(200,"application/json","{\"ok\":true}");
- else server.send(r.status,"text/plain; charset=utf-8",r.message);
+ const int status=r.code==ResultCode::Ok?200:r.code==ResultCode::Invalid?400:r.code==ResultCode::Blocked?409:500;
+ if(status==200)server.send(200,"application/json","{\"ok\":true}");
+ else {String json=F("{\"ok\":false,\"code\":\"");json+=status==400?"INVALID_REQUEST":status==409?"OPERATION_BLOCKED":"INTERNAL_ERROR";json+=F("\",\"message\":\"");json+=jsonEscape(r.message);json+=F("\"}");server.send(status,"application/json; charset=utf-8",json);}
 }
-void handleMode(){if(!server.hasArg("value")){sendResult({400,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
-void handleCommand(){if(!server.hasArg("action")){sendResult({400,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
+void handleMode(){if(!server.hasArg("value")){sendResult({ResultCode::Invalid,"Missing mode"});return;}sendResult(controller().setMode(server.arg("value")));}
+void handleCommand(){if(!server.hasArg("action")){sendResult({ResultCode::Invalid,"Missing action"});return;}sendResult(controller().command(server.arg("action")));}
 void handleEvents() {
   String json;
   json.reserve(100 + eventSize() * 150);
@@ -195,6 +203,8 @@ void handleEvents() {
     json += F("\",\"message\":\"");
     json += jsonEscape(eventAt(i).message);
 
+    json += F("\",\"code\":\"");json+=eventCodeText(eventAt(i).code);
+    json += F("\",\"level\":\"");json+=eventLevelText(eventAt(i).level);
     json += F("\"}");
   }
 
@@ -229,37 +239,32 @@ void handleSettingsGet(){
   json+=sep+String(char(34))+"noMotionWarnSec"+char(34)+":"+String(settings.noMotionWarnSec);sep=",";
   json+=sep+String(char(34))+"autoStepMin"+char(34)+":"+String(settings.autoStepMin);sep=",";
   json+=sep+String(char(34))+"wifiReconnectMs"+char(34)+":"+String(settings.wifiReconnectMs);sep=",";
-  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(settings.wifiDiagnosticMs);sep=",";
+  json+=sep+String(char(34))+"wifiDiagnosticMs"+char(34)+":"+String(DEFAULT_WIFI_DIAGNOSTIC_MS);sep=",";
   json+=sep+String(char(34))+"ntpStaleSec"+char(34)+":"+String(settings.ntpStaleSec);sep=",";
   json+=sep+String(char(34))+"encoderPollMs"+char(34)+":"+String(settings.encoderPollMs);sep=",";
-  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(settings.encoderProbeMs);sep=",";
+  json+=sep+String(char(34))+"encoderProbeMs"+char(34)+":"+String(DEFAULT_ENCODER_PROBE_MS);sep=",";
   json+=sep+String(char(34))+"encoderStableSamples"+char(34)+":"+String(settings.encoderStableSamples);sep=",";
   json+=","+String(char(34))+"_saved"+char(34)+":";
   json+=controller().settingsSaved()?"true":"false";
-  json+="}";
+  json+=F(",\"_fields\":[");
+  bool first=true;
+#define FIELD(key,label,min,max,scale) if(!first)json+=',';first=false;json+=F("[\"" #key "\",\"" label "\",");json+=String((double)(min)/(scale),6);json+=',';json+=String((double)(max)/(scale),6);json+=',';json+=String(scale);json+=']';
+  PUBLIC_SETTINGS(FIELD)
+#undef FIELD
+  json+=F("]}");
   server.sendHeader("Cache-Control","no-store");
   server.send(200,"application/json",json);
 }
 void handleSettingsPost(){
   RuntimeSettings next=controller().settings();
-  if(!readSetting("manualLimitSec",next.manualLimitSec) ||
-     !readSetting("autoLimitSec",next.autoLimitSec) ||
-     !readSetting("manualPauseSec",next.manualPauseSec) ||
-     !readSetting("calibrationGuardSec",next.calibrationGuardSec) ||
-     !readSetting("noMotionWarnSec",next.noMotionWarnSec) ||
-     !readSetting("autoStepMin",next.autoStepMin) ||
-     !readSetting("wifiReconnectMs",next.wifiReconnectMs) ||
-     !readSetting("wifiDiagnosticMs",next.wifiDiagnosticMs) ||
-     !readSetting("ntpStaleSec",next.ntpStaleSec) ||
-     !readSetting("encoderPollMs",next.encoderPollMs) ||
-     !readSetting("encoderProbeMs",next.encoderProbeMs) ||
-     !readSetting("encoderStableSamples",next.encoderStableSamples)){
-    server.send(400,"text/plain; charset=utf-8","Некорректные параметры");
-    return;
-  }
+  bool valid=true;
+#define READ_FIELD(key,label,min,max,scale) if(!readSetting(#key,next.key))valid=false;
+  PUBLIC_SETTINGS(READ_FIELD)
+#undef READ_FIELD
+  if(!valid){sendResult({ResultCode::Invalid,"Некорректные параметры"});return;}
   const String operation=server.arg("operation");
   if(operation!="apply" && operation!="save"){
-    server.send(400,"text/plain","Invalid operation");return;
+    sendResult({ResultCode::Invalid,"Invalid operation"});return;
   }
   sendResult(controller().changeSettings(next,operation=="save"));
 }
@@ -286,7 +291,7 @@ void webSetup() {
 
   server.begin();
 
-  Serial.println("[WEB] HTTP server v1.14 started");
+  Serial.println("[WEB] HTTP server v" FIRMWARE_VERSION " started");
 }
 
 void webLoop(){server.handleClient();}
