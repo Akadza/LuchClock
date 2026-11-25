@@ -23,5 +23,10 @@ int main() {
     CHECK(magnetic.lastDelta() == 16);
     CHECK(!magnetic.update(64, 0) && magnetic.lastDelta() == 0);
     CHECK(magnetic.update(32, 0) && magnetic.lastDelta() == 0);
+    position_math::MovementFilter faulty(0, 100, 16, 100);
+    CHECK(!faulty.update(64, 25) && faulty.valid());
+    CHECK(!faulty.update(64, 99) && faulty.valid());
+    CHECK(!faulty.update(64, 1) && !faulty.valid());
+    CHECK(!faulty.update(0, 0) && !faulty.valid() && faulty.angle() == 0 && faulty.lastDelta() == 0);
     std::cout << "Movement filter OK\n";
 }
