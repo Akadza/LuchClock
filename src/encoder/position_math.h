@@ -22,4 +22,13 @@ inline bool advanceClockPosition(uint32_t p, int32_t d, uint32_t& out) {
     out = uint32_t(next);
     return true;
 }
+inline bool clockDelta(uint32_t from, uint32_t to, int32_t& out) {
+    if (from >= 786432 || to >= 786432) return false;
+    int32_t v = int32_t(to) - int32_t(from);
+    if (v == 393216 || v == -393216) return false;
+    if (v < -393216) v += 786432;
+    else if (v > 393216) v -= 786432;
+    out = v;
+    return true;
+}
 }
