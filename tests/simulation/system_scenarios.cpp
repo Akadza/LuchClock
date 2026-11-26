@@ -68,7 +68,10 @@ public:
  int16_t encoderCalibratedPosition() override{return ::encoderCalibratedPosition();}
  int encoderMinutes() override{return ::encoderMinutes();}
  uint8_t address() override{return ::encoderAddressValue();}
- uint8_t raw() override{return ::encoderRawValue();}
+ int16_t raw() override{return ::encoderRawValue();}
+ uint16_t resolution() override{return ::encoderResolution();}
+ const char* type() override{return ::encoderType();}
+ const char* magnetState() override{return ::encoderMagnetState();}
 };
 IEncoder& encoder(){static Encoder e;return e;}
 class Motor final:public IMotor {
@@ -110,11 +113,11 @@ public:
 INetworkStatus& networkStatus(){static Network n;return n;}
 class Calibration final:public ICalibration {
 public:
- bool saved() override{return calibrationSaved();}
- uint8_t offset() override{return calibrationOffset();}
- int8_t signedOffset() override{return calibrationSignedOffset();}
- bool needed(uint8_t m,int16_t r) override{return calibrationNeeded(m,r);}
- bool save(uint8_t m,int16_t r) override{return calibrationSave(m,r);}
+ bool saved() override{return calibrationSavedFor(encoderResolution());}
+ uint16_t offset() override{return calibrationOffsetFor(encoderResolution());}
+ int16_t signedOffset() override{return calibrationSignedOffsetFor(encoderResolution());}
+ bool needed(uint8_t m,int16_t r) override{return calibrationNeededFor(encoderResolution(),m,r);}
+ bool save(uint8_t m,int16_t r) override{return calibrationSaveFor(encoderResolution(),m,r);}
  bool timeAllowed(uint8_t& m) override{return calibrationTimeAllowed(m);}
 };
 ICalibration& calibration(){static Calibration c;return c;}
@@ -273,4 +276,26 @@ int main(){
  cfg=settingsCurrent();cfg.encoderPollMs=25;cfg.encoderStableSamples=2;CHECK(ok(controller().changeSettings(cfg,false)));hold(1000);startManual();
  CHECK(ok(controller().command("forward")));tick(500);expectLost(true);
  std::cout<<"All 16 virtual system scenarios passed"<<std::endl;
+ scenario("M01 AS5600 discovery, 12-bit values and 12-hour wrap");
+ CHECK(ok(controller().setMode("off")));motorSetup();Wire.connected=false;Wire.asConnected=true;
+ Wire.status=0x20;Wire.angle=4093;settingsSetup();calibrationSetup();encoderSetup();timeSetup();controllerSetup();hold(100);
+ CHECK(encoderHealthy() && encoderResolution()==4096 && encoderRawValue()==4093);
+ startManual(11);hold(1000);Wire.angle=0;hold(200);CHECK(encoderClockPosition()==0);
+ scenario("M02 stationary magnet jitter does not advance");
+ for(int i=0;i<40;++i){Wire.angle=i%2?4095:1;tick();CHECK(encoderHealthy() && encoderClockPosition()==0);}
+ scenario("M03 sustained realistic forward movement and no-motion protection");
+ cfg=settingsCurrent();cfg.noMotionWarnSec=2;cfg.manualLimitSec=60;CHECK(ok(controller().changeSettings(cfg,false)));
+ CHECK(ok(controller().command("forward")));
+ for(unsigned i=1;i<=40;++i){Wire.angle=i;hold(175);CHECK(encoderValid() && output==HIGH);checkInvariant();}
+ scenario("M04 magnet missing, weak, strong and recovery");
+ Wire.status=0;hold(600);expectLost(true);
+ Wire.status=0x20;hold(100);CHECK(encoderHealthy() && motorAutoFault());CHECK(ok(controller().resetFault()));
+ for(uint8_t status:{uint8_t(0x30),uint8_t(0x28)}){startManual();Wire.status=status;hold(600);expectLost(false);Wire.status=0x20;hold(100);}
+ scenario("M05 independent AS calibration and no OTP writes");
+ syncAt(9,15,0);startManual();CHECK(ok(controller().calibrate()));CHECK(calibrationSavedFor(4096)&&calibrationSavedFor(128));
+ CHECK(encoderMinutes()==15 && !encoderHourKnown() && Wire.configWrites==0);
+ scenario("M06 both sensors conflict on boot; no motor");
+ CHECK(ok(controller().setMode("off")));motorSetup();Wire.connected=true;encoderSetup();controllerSetup();hold(100);
+ CHECK(!encoderValid() && String(encoderType())=="conflict" && !ok(controller().setMode("manual")) && output==LOW);
+ std::cout<<"All 6 AS5600 scenarios passed"<<std::endl;
 }

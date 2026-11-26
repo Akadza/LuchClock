@@ -43,6 +43,9 @@ public:
  s.clockHour=encoder().encoderClockHour();
  s.clockPosition=encoder().encoderClockPosition();
  s.encoderAddress=encoder().address();
+ s.encoderResolution=encoder().resolution();
+ s.encoderType=encoder().type();
+ s.encoderMagnetState=encoder().magnetState();
  s.encoderRaw=encoder().raw();
  s.encoderPosition=encoder().encoderCalibratedPosition();
  s.encoderRawPosition=encoder().encoderRawPosition();
@@ -160,9 +163,9 @@ return {ResultCode::Ok,""};}
  if(!calibrationReady())return {ResultCode::Blocked,"Калибровка недоступна"};
  uint8_t minute=0;if(!calibration().timeAllowed(minute))return {ResultCode::Blocked,""};
  const int16_t raw=encoder().encoderRawPosition();
- if(raw<0 || raw>=128)return {ResultCode::Blocked,"Калибровка недоступна"};
+ if(raw<0 || raw>=encoder().resolution())return {ResultCode::Blocked,"Калибровка недоступна"};
  if(!calibration().needed(minute,raw))return {ResultCode::Blocked,""};
- const uint8_t previousOffset=calibration().offset();
+ const uint16_t previousOffset=calibration().offset();
  if(!calibration().save(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
  if(calibration().offset()!=previousOffset) encoder().encoderCalibrationChanged();
  eventAdd("Калибровка энкодера сохранена",EventCode::CALIBRATION_SAVED,EventLevel::Info);return {ResultCode::Ok,""};

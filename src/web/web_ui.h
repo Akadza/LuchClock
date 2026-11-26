@@ -275,6 +275,7 @@ body.modal-open{overflow:hidden}
 .calibration-actions{display:flex;gap:8px;flex-wrap:wrap}
 .calibration-actions button{font-size:12px;padding:7px 12px}
 #calibrationMessage{display:block;margin-top:8px;color:var(--muted)}
+.mode button.active,.mode button.active:disabled {background:#294966!important;border-color:#75a9d5!important;color:#e4f2ff!important;box-shadow:inset 0 0 0 1px #75a9d5!important}
 </style>
 </head>
 <body>
@@ -308,7 +309,7 @@ body.modal-open{overflow:hidden}
       <div class="value" id="ntp">Не настроен</div>
     </div>
     <div class="status">
-      <div class="name">PCF8574</div>
+      <div class="name">Энкодер</div>
       <div class="value" id="sensor">Не подключён</div>
     </div>
     <div class="status">
@@ -362,7 +363,7 @@ body.modal-open{overflow:hidden}
       <div class="value" id="ntpDetail">—</div>
     </div>
     <div class="diag-item">
-      <div class="label">Связь с PCF8574</div>
+      <div class="label">Связь с энкодером</div>
       <div class="value" id="sensorDetail">—</div>
     </div>
     <div class="diag-item">
@@ -486,13 +487,15 @@ function renderStatus(s) {
     }
   }
 
-  // Абсолютный ACE-128: 128 позиций отображаются в 0..59 минут.
+  // Абсолютный датчик: разрешение сообщает сервер.
   text('hands', s.encoder_valid ? String(s.encoder_minutes).padStart(2,'0') + ' мин' + (s.encoder_healthy?'':' · последнее') : 'Нет данных');
 
-  text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
+  text('sensor', s.encoder_connected ? (s.encoder_type==='as5600'?'AS5600':'ACE-128') : (s.encoder_type==='conflict'?'Конфликт датчиков':'Не найден'), 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
   text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
   text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position + (s.encoder_healthy?'':' · проверка') : 'Нет данных', 'value ' + (s.encoder_healthy ? 'ok' : 'warn'));
-  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · подтверждённая сырая позиция: ' + s.encoder_raw_position + '/127 · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · код не распознан') : 'PCF8574 не найден');
+  const magnetLabels={ok:'Магнит OK',missing:'Магнит отсутствует',weak:'Слабое поле',strong:'Сильное поле',read_error:'Ошибка чтения',checking:'Проверка'};
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · подтверждённая сырая позиция: ' + s.encoder_raw_position + '/' + (s.encoder_resolution-1) + ' · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · нет достоверного угла') : 'Датчик не найден');
+  if(s.encoder_type==='as5600')$('magnetDetail').textContent += ' · '+(magnetLabels[s.encoder_magnet_state]||'Нет данных');
 
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);

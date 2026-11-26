@@ -99,6 +99,9 @@ void handleStatus() {
   json += F(",\"clock_position\":");json += String((unsigned long)snapshot.clockPosition);
   json += F(",\"encoder_address\":");
   json += String(snapshot.encoderAddress);
+  json += F(",\"encoder_type\":\"");json += snapshot.encoderType;json += F("\"");
+  json += F(",\"encoder_resolution\":");json += String(snapshot.encoderResolution);
+  json += F(",\"encoder_magnet_state\":\"");json += snapshot.encoderMagnetState;json += F("\"");
   json += F(",\"encoder_raw\":");
   json += String(snapshot.encoderRaw);
   json += F(",\"encoder_position\":");
