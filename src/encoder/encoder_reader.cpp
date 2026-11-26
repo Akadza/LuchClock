@@ -28,6 +28,9 @@ static uint8_t encoderStableCount = 0;
 static position_math::MovementFilter filter(0, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
 static position_math::ClockTracker tracker(0);
 static bool initialized = false;
+static uint16_t calibratedAngle(uint16_t rawAngle) {
+  return position_math::applyOffset(rawAngle, static_cast<uint16_t>(calibrationOffset() * 512U));
+}
 static void loseObservation() {
   filter.invalidate();
   tracker.loseContinuity();
@@ -103,13 +106,13 @@ void encoderLoop() {
     }
     if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
     filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
-    tracker.beginObservation(angle);
+    tracker.beginObservation(calibratedAngle(angle));
     encoderPosition = raw;
     initialized = true;
     return;
   }
   if (filter.update(angle, elapsed)) {
-    if (!tracker.advance(filter.angle(), filter.lastDelta())) {
+    if (!tracker.advance(calibratedAngle(filter.angle()), filter.lastDelta())) {
       loseObservation();
       return;
     }
@@ -121,11 +124,14 @@ void encoderLoop() {
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
 bool encoderHealthy() { return encoderValid() && filter.healthy(); }
-bool encoderHourKnown() { return encoderHealthy() && tracker.known(); }
+bool encoderHourKnown() { return encoderValid() && tracker.known(); }
 int encoderClockHour() { return encoderHourKnown() ? int(tracker.position() / 65536UL) : -1; }
 uint32_t encoderClockPosition() { return encoderHourKnown() ? tracker.position() : 0; }
 bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(hour); }
-void encoderCalibrationChanged() { tracker.loseContinuity(); }
+void encoderCalibrationChanged() {
+  if (encoderValid()) tracker.beginObservation(calibratedAngle(filter.angle()));
+  else tracker.loseContinuity();
+}
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
   return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;
