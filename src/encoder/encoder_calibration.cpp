@@ -58,10 +58,8 @@ bool calibrationSave(uint8_t minute,int16_t rawPosition){
 int8_t calibrationSignedOffset(){return storedOffset>=64?(int16_t)storedOffset-128:storedOffset;}
 bool calibrationTimeAllowed(uint8_t& minute){
   if(!clockTime().timeIsFresh())return false;
-  time_t now=time(nullptr);
-  struct tm local={};
-  if(!localtime_r(&now,&local))return false;
-  if((uint32_t)local.tm_sec>=60UL-settingsCurrent().calibrationGuardSec)return false;
-  minute=(uint8_t)local.tm_min;
+  uint32_t ms=0;
+  if(!clockTime().localClock(ms,minute))return false;
+  if((ms/1000UL)%60UL>=60UL-settingsCurrent().calibrationGuardSec)return false;
   return true;
 }

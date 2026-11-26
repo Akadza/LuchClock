@@ -150,6 +150,7 @@ void encoderCalibrationChanged() {
   }
   else tracker.loseContinuity();
 }
+int32_t encoderConfirmedAngle(){return encoderValid()?static_cast<int32_t>(filter.angle()):-1;}
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
   return encoderValid()?filter.angle()/512:-1;

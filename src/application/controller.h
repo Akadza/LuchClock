@@ -6,7 +6,7 @@ struct CommandResult { ResultCode code; const char* message; };
 struct ModeState {
  String mode; bool manual, transition, autoReady, canForward, canReverse, canStop, canAuto, calibrationAllowed, settingsAllowed;
  unsigned long waitMs, motorLimitMs;
- bool canManual, canOff, canResetFault, showFaultReset;
+ bool canManual, canOff, canResetFault, showFaultReset, canSetClockHour;
 };
 struct ControllerState {
  ModeState mode;

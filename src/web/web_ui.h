@@ -327,8 +327,8 @@ body.modal-open{overflow:hidden}
       <button id="manualBtn" onclick="setMode('manual')">Ручной</button>
     </div>
   </div>
-  <div id="controlArea"><div id="offPanel" hidden><strong>Двигатель отключён</strong><p class="off-note">Для работы выберите режим.</p></div>
-  <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
+  <div id="controlArea"><div id="offPanel"><strong>Двигатель отключён</strong><p class="off-note">Для работы выберите режим.</p></div>
+  <div id="autoPanel" hidden><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
     <div class="info" style="max-width:560px;margin:0 auto 12px"><div class="between" style="flex-wrap:wrap"><label for="clockHourSelect">Положение часовой стрелки</label><div style="display:flex;gap:8px"><select id="clockHourSelect" aria-label="Час на циферблате" style="background:var(--raised);color:var(--text);border:1px solid var(--line);padding:8px;border-radius:8px"><option value="0">12</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option></select><button id="setClockHourBtn" onclick="setClockHour()" disabled>Задать час</button></div></div><small id="clockHourState">Час не задан</small></div>
@@ -397,7 +397,7 @@ body.modal-open{overflow:hidden}
 
 <script>
 const $ = id => document.getElementById(id);
-let currentMode = 'off';
+let currentMode = '';
 let modeRequestPending = false;
 let lastLogSignature = '';
 let refreshPending = false;
@@ -487,12 +487,12 @@ function renderStatus(s) {
   }
 
   // Абсолютный ACE-128: 128 позиций отображаются в 0..59 минут.
-  text('hands', s.encoder_valid ? String(s.encoder_minutes).padStart(2,'0') + ' мин' : 'Нет данных');
+  text('hands', s.encoder_valid ? String(s.encoder_minutes).padStart(2,'0') + ' мин' + (s.encoder_healthy?'':' · последнее') : 'Нет данных');
 
   text('sensor', s.encoder_connected ? 'Подключён' : 'Не найден', 'value ' + (s.encoder_connected ? 'ok' : 'warn'));
   text('sensorDetail', s.encoder_connected ? 'I²C адрес 0x' + Number(s.encoder_address).toString(16).toUpperCase() : 'Нет ответа на I²C (D1/D2)');
-  text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position : 'Нет данных', 'value ' + (s.encoder_valid ? 'ok' : 'warn'));
-  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · сырая позиция: ' + s.encoder_raw_position + '/127 · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · код не распознан') : 'PCF8574 не найден');
+  text('magnet', s.encoder_valid ? 'Позиция ' + s.encoder_position + (s.encoder_healthy?'':' · проверка') : 'Нет данных', 'value ' + (s.encoder_healthy ? 'ok' : 'warn'));
+  text('magnetDetail', s.encoder_connected ? 'Код: ' + s.encoder_raw + ' (0x' + Number(s.encoder_raw).toString(16).toUpperCase().padStart(2,'0') + ')' + (s.encoder_valid ? ' · подтверждённая сырая позиция: ' + s.encoder_raw_position + '/127 · смещение: ' + (s.calibration_signed_offset>0?'+':'') + s.calibration_signed_offset : ' · код не распознан') : 'PCF8574 не найден');
 
   text('uptime', formatUptime(s.uptime_seconds));
   const newlyFaulted=!!s.auto_fault && !(lastStatus && lastStatus.auto_fault);
@@ -519,7 +519,7 @@ function renderStatus(s) {
     text('autoStatus', s.mode_transition ? 'Остановка · защитная пауза' :
       s.auto_ready ? 'Контроллер готов' : 'Автоматический режим не готов');
     text('modeState', s.mode_transition ? 'Ожидание ' + Math.ceil(s.mode_wait_ms / 1000) + ' с · запуск запрещён' :
-      s.auto_ready ? 'Автоматическое движение пока не реализовано' : (s.motor_state === 'stopped' ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода'));
+      s.auto_ready ? 'Автоматическое движение пока не реализовано' : (!s.ntp_recent ? 'NTP устарел · автоматическое движение запрещено' : !s.encoder_healthy ? 'Проверка энкодера' : !s.clock_hour_known ? 'Час не задан' : s.motor_state === 'stopped' ? 'Автоматическое движение пока не реализовано' : 'Ожидание остановки привода'));
   }
   if (s.mode === 'auto') {
     text('modeHint', s.mode_transition ? 'Переключение · ожидание остановки' :
@@ -541,7 +541,7 @@ function renderStatus(s) {
   text(
     'diagSummary',
     s.ntp_recent
-      ? 'Время синхронизировано · энкодер: ' + (s.encoder_valid ? s.encoder_minutes + ' мин' : 'нет данных')
+      ? 'Время синхронизировано · энкодер: ' + (s.encoder_valid ? s.encoder_minutes + ' мин' + (s.encoder_healthy?'':' (последнее)') : 'нет данных')
       : 'Проверка синхронизации времени'
   );
 }
@@ -589,7 +589,7 @@ function updateManualButtons(state, remaining) {
   $('stopBtn').disabled = !statusKnown || commandPending || !s?.can_stop;
   $('autoBtn').disabled = !statusKnown || busy || !s?.can_auto || currentMode==='auto';
   $('manualBtn').disabled = !statusKnown || busy || !s?.can_manual;
-  $('setClockHourBtn').disabled = !statusKnown || busy || currentMode!=='manual' || !!s?.mode_transition || s?.motor_state!=='stopped' || !s?.encoder_healthy || !!s?.auto_fault;
+  $('setClockHourBtn').disabled = !statusKnown || busy || !s?.can_set_clock_hour;
   $('offBtn').disabled = !statusKnown || modeRequestPending || !s?.can_off;
   const reset=$('faultActions').querySelector('button');
   if(reset)reset.disabled=!statusKnown || !s?.can_reset_fault;
@@ -630,6 +630,13 @@ async function refresh() {
       updateSettingsButtons();
       clockValid=false;clockAt=0;
       text('time','--:--:--');
+      text('hands','Нет данных');
+      text('sensor','Нет связи с ESP','value warn');
+      text('magnet','Нет данных','value warn');
+      text('magnetDetail','Нет свежих данных');
+      text('sensorDetail','Нет ответа API');
+      text('clockHourState','Нет свежих данных');
+      text('diagSummary','Нет связи с ESP');
       $('calibrationBtn').disabled=true;
       updateManualButtons(lastMotorState, 0);
     }

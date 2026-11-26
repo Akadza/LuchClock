@@ -16,6 +16,7 @@ public:
  uint32_t encoderClockPosition() override {return ::encoderClockPosition();}
  bool encoderSetHour(uint8_t hour) override {return ::encoderSetHour(hour);}
  void encoderCalibrationChanged() override {::encoderCalibrationChanged();}
+ int32_t encoderConfirmedAngle() override {return ::encoderConfirmedAngle();}
  int16_t encoderRawPosition() override {return ::encoderRawPosition();}
  int16_t encoderCalibratedPosition() override {return ::encoderCalibratedPosition();}
  int encoderMinutes() override {return ::encoderMinutes();}

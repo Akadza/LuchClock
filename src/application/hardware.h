@@ -13,6 +13,7 @@ public:
  virtual bool encoderSetHour(uint8_t hour)=0;
  virtual void encoderCalibrationChanged()=0;
  virtual int16_t encoderRawPosition()=0;
+ virtual int32_t encoderConfirmedAngle()=0;
  virtual int16_t encoderCalibratedPosition()=0;
  virtual int encoderMinutes()=0;
  virtual uint8_t address()=0;

@@ -159,6 +159,7 @@ void handleStatus() {
   json += F(",\"can_auto\":");
   json += state.canAuto ? "true" : "false";
 
+  json += F(",\"can_set_clock_hour\":");json += state.canSetClockHour?"true":"false";
   json += F(",\"can_manual\":");json += state.canManual?"true":"false";
   json += F(",\"can_off\":");json += state.canOff?"true":"false";
   json += F(",\"can_reset_fault\":");json += state.canResetFault?"true":"false";
