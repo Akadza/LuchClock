@@ -23,7 +23,7 @@ static bool modeIsReady() {
 
 
 static bool calibrationReady(){
- return (currentMode==ClockMode::Manual || currentMode==ClockMode::Off) && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderValid() && clockTime().timeIsFresh();
+ return (currentMode==ClockMode::Manual || currentMode==ClockMode::Off) && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderHealthy() && clockTime().timeIsFresh();
 }
 static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibration().timeAllowed(minute) && calibration().needed(minute,encoder().encoderRawPosition());}
 static bool settingsAllowed(){return currentMode!=ClockMode::Auto && motor().motorState()==MOTOR_STOPPED && !modeTransition;}
@@ -72,20 +72,21 @@ public:
  RuntimeSettings settings() const override {return settingsCurrent();}
  bool settingsSaved() const override {return settingsPersistedMatches();}
  ModeState state() const override {
- return {modeText(),(currentMode==ClockMode::Manual),modeTransition,currentMode==ClockMode::Auto && autoReady && modeIsReady() && encoder().encoderHourKnown() && !motor().motorAutoFault(),
+ return {modeText(),(currentMode==ClockMode::Manual),modeTransition,currentMode==ClockMode::Auto && autoReady && modeIsReady() && encoder().encoderHealthy() && encoder().encoderHourKnown() && clockTime().timeIsFresh() && !motor().motorAutoFault(),
  (currentMode==ClockMode::Manual) && modeIsReady() && motor().motorCanForward(),(currentMode==ClockMode::Manual) && modeIsReady() && motor().motorCanReverse(),
  (currentMode==ClockMode::Manual) && (motor().motorState()==MOTOR_FORWARD || motor().motorState()==MOTOR_REVERSE),
- encoder().encoderHealthy() && encoder().encoderHourKnown() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
+ encoder().encoderHealthy() && encoder().encoderHourKnown() && clockTime().timeIsFresh() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
  calibrationAllowed(),settingsAllowed(),modeWaitRemainingMs(),((currentMode==ClockMode::Manual)?settingsCurrent().manualLimitSec:settingsCurrent().autoLimitSec)*1000UL,
  currentMode!=ClockMode::Manual && encoder().encoderHealthy() && !motor().motorAutoFault() && modeIsReady(),
- currentMode!=ClockMode::Off, currentMode==ClockMode::Off && encoder().encoderValid() && motor().motorAutoFault(), currentMode==ClockMode::Off && motor().motorAutoFault()};
+ currentMode!=ClockMode::Off, currentMode==ClockMode::Off && encoder().encoderHealthy() && motor().motorAutoFault(), currentMode==ClockMode::Off && motor().motorAutoFault()};
  }
  CommandResult setMode(const String& mode) override {
   if(mode==modeText())return {ResultCode::Ok,""};
-  if (mode != "off" && !encoder().encoderValid()) {
+  if (mode != "off" && !encoder().encoderHealthy()) {
     return {ResultCode::Blocked,"Энкодер не подключён: доступен только режим Выключен"};
   }
 
+  if (mode == "auto" && !clockTime().timeIsFresh()) return {ResultCode::Blocked,"Нет достоверного системного времени"};
   if (mode == "auto" && !encoder().encoderHourKnown()) {
     return {ResultCode::Blocked,"Сначала задайте час в ручном режиме"};
   }
@@ -145,7 +146,7 @@ return {ResultCode::Ok,""};}
   if (action == "stop" && motor().motorState()!=MOTOR_FORWARD && motor().motorState()!=MOTOR_REVERSE) {
     return {ResultCode::Blocked,"Двигатель уже остановлен"};
   }
-  if (action != "stop" && (!modeIsReady() || !encoder().encoderValid())) {
+  if (action != "stop" && (!modeIsReady() || !encoder().encoderHealthy())) {
     return {ResultCode::Blocked,"Mode transition or motor cooldown active"};
   }
   if (!motor().motorCommand(action)) {
@@ -173,7 +174,7 @@ return {ResultCode::Ok,""};}
   return {ResultCode::Ok,""};
  }
  CommandResult resetFault() override {
- if(currentMode!=ClockMode::Off || !encoder().encoderValid() || !motor().motorResetAutoFault())return {ResultCode::Blocked,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
+ if(currentMode!=ClockMode::Off || !encoder().encoderHealthy() || !motor().motorResetAutoFault())return {ResultCode::Blocked,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
  eventAdd("Авария сброшена оператором",EventCode::FAULT_RESET,EventLevel::Info);return {ResultCode::Ok,""};
  }
  CommandResult changeSettings(const RuntimeSettings& next,bool save) override {
