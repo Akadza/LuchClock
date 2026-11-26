@@ -127,5 +127,16 @@ int main(){
  fresh=true;CHECK(ok(controller().setClockHour(3)));
  CHECK(ok(controller().calibrate()) && !encoderHourKnown() && encoderHealthy());
  CHECK(output==LOW && encoderConfirmedAngle()==512);
+ // A full budget before calibration must remain available immediately after it.
+ Wire.value=127; // raw 0, calibrated 2
+ ticks(2);CHECK(encoderHealthy() && encoderConfirmedAngle()==1024);
+ CHECK(ok(controller().setClockHour(3)));
+ const uint32_t baseline=encoderClockPosition();
+ Wire.value=255; // invalid ACE code, PCF still responds
+ tick();CHECK(encoderConnected() && encoderValid() && !encoderHealthy());
+ Wire.value=127;ticks(2);CHECK(encoderHealthy() && encoderClockPosition()==baseline);
+ Wire.value=255;ticks(21);
+ CHECK(encoderConnected() && !encoderValid() && !encoderHourKnown() && controller().state().mode=="off");
+ Wire.value=127;ticks(2);CHECK(encoderHealthy() && !encoderHourKnown());
  std::cout<<"Reader/motor/controller integration OK\n";
 }
