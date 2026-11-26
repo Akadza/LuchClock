@@ -34,7 +34,9 @@ static uint16_t calibratedAngle(uint16_t rawAngle) {
   return position_math::applyOffset(rawAngle, static_cast<uint16_t>(calibrationOffset() * 512U));
 }
 static void loseObservation() {
+  if (initialized) Serial.println(F("[ENCODER] Observation lost; hour unknown"));
   filter.invalidate();
+  previousHealthy = false;
   tracker.loseContinuity();
   initialized = false;
   encoderPosition = -1;
@@ -87,7 +89,9 @@ void encoderLoop() {
     return;
   }
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
+    Serial.println(F("[ENCODER] I2C read failed"));
     encoderAddress = 0;
+    encoderLastProbe = now;
     loseObservation();
     return;
   }
@@ -102,6 +106,8 @@ void encoderLoop() {
     encoderStableCount = 0;
     if (initialized) {
       filter.missing(elapsed);
+      if (previousHealthy) Serial.printf("[ENCODER] Invalid ACE code=%u; holding confirmed angle=%u\n", unsigned(value), unsigned(filter.angle()));
+      previousHealthy = false;
       if (!filter.valid()) loseObservation();
     }
     return;
@@ -119,6 +125,7 @@ void encoderLoop() {
     activeStableSamples = settingsCurrent().encoderStableSamples;
     initialized = true;
     previousHealthy = true;
+    Serial.printf("[ENCODER] Observation initialized; raw=%u confirmed=%u; hour unknown\n", unsigned(value), unsigned(angle));
     return;
   }
   if (filter.update(angle, elapsed)) {
@@ -145,8 +152,8 @@ bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(h
 void encoderCalibrationChanged() {
   if (encoderValid()) {
     const uint16_t angle = calibratedAngle(static_cast<uint16_t>(encoderPosition * 512U));
-    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples);
-    tracker.beginObservation(angle);
+    if (filter.rebase(angle)) tracker.beginObservation(angle);
+    else loseObservation();
   }
   else tracker.loseContinuity();
 }

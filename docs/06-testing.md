@@ -31,3 +31,5 @@
 ### Подтверждённые результаты 84bda42
 
 [Host C++ tests](https://github.com/Akadza/LuchClock/actions/runs/45765664653): success, 15 модульных файлов и Reader/motor/controller integration OK. [ESP8266 firmware build](https://github.com/Akadza/LuchClock/actions/runs/45765664598): success, NodeMCU core 3.1.2. Повышена версия до 1.19, проверить новый CI перед прошивкой. [Протокол стенда](08-bench-protocol.md) — обязательные физические проверки; реальные HTTP, EEPROM и SNTP проверяются на устройстве.
+
+Повторный CI e9848a4: [host](https://github.com/Akadza/LuchClock/actions/runs/45766382586), [ESP8266](https://github.com/Akadza/LuchClock/actions/runs/45766382572) — success. После повторного аудита добавлены регрессии reader (калибровка с остатком бюджета, краткий и длительный invalid ACE при отвечающем PCF). Новый CI ещё не подтверждён. Расширен протокол стенда A01–A14, B01–B06, C01–C10, D01–D06.

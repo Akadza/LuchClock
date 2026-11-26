@@ -162,8 +162,9 @@ return {ResultCode::Ok,""};}
  const int16_t raw=encoder().encoderRawPosition();
  if(raw<0 || raw>=128)return {ResultCode::Blocked,"Калибровка недоступна"};
  if(!calibration().needed(minute,raw))return {ResultCode::Blocked,""};
+ const uint8_t previousOffset=calibration().offset();
  if(!calibration().save(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
- encoder().encoderCalibrationChanged();
+ if(calibration().offset()!=previousOffset) encoder().encoderCalibrationChanged();
  eventAdd("Калибровка энкодера сохранена",EventCode::CALIBRATION_SAVED,EventLevel::Info);return {ResultCode::Ok,""};
  }
  CommandResult setClockHour(uint8_t hour) override {
@@ -214,7 +215,7 @@ void controllerLoop(){
   if(fault && !previousAutoFault){
     String reason=motor().motorFaultReason();
     eventAdd(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
-      reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
+      reason=="encoder_lost" ? "Потеря достоверности энкодера во время движения" :
       "Критическая ошибка: привод заблокирован", reason=="no_motion"?EventCode::NO_MOTION:reason=="encoder_lost"?EventCode::ENCODER_LOST:EventCode::MOTOR_FAULT,EventLevel::Critical);
   }
   if(fault && currentMode!=ClockMode::Off){
