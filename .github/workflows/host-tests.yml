@@ -21,3 +21,10 @@ jobs:
             "$binary"
             rm -f "$binary"
           done
+      - name: Run production reader, motor and controller with host hardware fakes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp secrets.example.h secrets.h
+          g++ -std=c++11 -Wall -Wextra -Werror -pedantic -fsanitize=undefined -fno-sanitize-recover=all -Itests/fakes tests/integration/reader_motor_controller.cpp src/encoder/encoder_reader.cpp src/motor/motor_controller.cpp src/application/controller.cpp -o /tmp/luchclock-integration
+          /tmp/luchclock-integration
