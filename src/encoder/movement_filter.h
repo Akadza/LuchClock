@@ -4,8 +4,8 @@
 namespace position_math {
 class MovementFilter {
 public:
-    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0)
-        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false), forwardPending_(false), forwardCandidate_(initial) {}
+    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0, uint8_t stableSamples = 2)
+        : angle_(initial), lastDelta_(0), budget_(rate, capacity), timeoutMs_(timeoutMs), badMs_(0), suspicious_(false), valid_(true), recoveryCount_(0), recoveryCandidate_(initial), reverseTolerance_(reverseTolerance), reverseMs_(0), reverseActive_(false), forwardPending_(false), forwardCandidate_(initial), stableSamples_(stableSamples < 2 ? 2 : stableSamples), forwardCount_(0), unconfirmedMs_(0) {}
     bool valid() const { return valid_; }
     bool missing(uint32_t elapsedMs) {
         lastDelta_ = 0;
@@ -17,7 +17,7 @@ public:
         }
         return reject();
     }
-    bool healthy() const { return valid_ && !suspicious_; }
+    bool healthy() const { return valid_ && !suspicious_ && !forwardPending_ && !reverseActive_; }
     void invalidate() {
         valid_ = false;
         suspicious_ = true;
@@ -36,6 +36,9 @@ public:
             if (badMs_ >= timeoutMs_) { valid_ = false; return false; }
         }
         budget_.accrue(elapsedMs);
+        const uint32_t room = timeoutMs_ - unconfirmedMs_;
+        unconfirmedMs_ += elapsedMs > room ? room : elapsedMs;
+        if (forwardPending_ && unconfirmedMs_ >= timeoutMs_) { invalidate(); return false; }
         int32_t delta;
         if (!angularDelta(angle_, sample, delta)) return reject();
         if (delta < 0) {
@@ -56,14 +59,18 @@ public:
         }
         reverseActive_ = false;
         reverseMs_ = 0;
-        if (delta == 0) forwardPending_ = false;
+        if (delta == 0) { forwardPending_ = false; forwardCount_ = 0; }
         MovementBudget candidate = budget_;
         if (!candidate.consume(static_cast<uint16_t>(delta))) return reject();
-        if (!suspicious_ && delta > 0 &&
-            (!forwardPending_ || sample != forwardCandidate_)) {
-            forwardPending_ = true;
-            forwardCandidate_ = sample;
-            return false;
+        if (!suspicious_ && delta > 0) {
+            if (!forwardPending_) unconfirmedMs_ = 0;
+            if (!forwardPending_ || sample != forwardCandidate_) {
+                forwardPending_ = true;
+                forwardCandidate_ = sample;
+                forwardCount_ = 1;
+                return false;
+            }
+            if (++forwardCount_ < stableSamples_) return false;
         }
         if (suspicious_) {
             if (recoveryCount_ == 0 || sample != recoveryCandidate_) {
@@ -72,9 +79,12 @@ public:
                 return false;
             }
         }
+        if (suspicious_ && ++recoveryCount_ < stableSamples_) return false;
         budget_ = candidate;
         forwardPending_ = false;
-        if (suspicious_ && ++recoveryCount_ >= 2) {
+        forwardCount_ = 0;
+        unconfirmedMs_ = 0;
+        if (suspicious_) {
             suspicious_ = false;
             badMs_ = 0;
             recoveryCount_ = 0;
@@ -105,5 +115,8 @@ private:
     bool reverseActive_;
     bool forwardPending_;
     uint16_t forwardCandidate_;
+    uint8_t stableSamples_;
+    uint8_t forwardCount_;
+    uint32_t unconfirmedMs_;
 };
 }
