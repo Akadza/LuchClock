@@ -113,7 +113,7 @@ void encoderLoop() {
       encoderStableCount = 0;
     }
     if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
-    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples);
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples, 512);
     tracker.beginObservation(angle);
     encoderPosition = raw;
     activeStableSamples = settingsCurrent().encoderStableSamples;

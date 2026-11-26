@@ -17,5 +17,12 @@ int main() {
     CHECK(!missing.update(1024, 25));
     CHECK(!missing.missing(250));
     CHECK(!missing.missing(250) && !missing.valid());
+    MovementFilter first(65024, 120, 1024, 500, 512, 2, 512);
+    CHECK(!first.update(0, 25));
+    CHECK(first.update(0, 25) && first.lastDelta() == 512);
+    CHECK(first.rebase(512));
+    CHECK(first.lastDelta() == 0);
+    CHECK(!first.update(1024, 25));
+    CHECK(!first.update(1024, 25) && first.angle() == 512);
     std::cout << "Observation timeout OK\n";
 }

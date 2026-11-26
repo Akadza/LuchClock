@@ -2,11 +2,11 @@
 #include <stdint.h>
 namespace position_math {
 // Rate in normalized units per second; credit in thousandths of a unit.
-// Starts empty. The caller supplies elapsed milliseconds and forward distance.
+// Starts empty unless the caller supplies a bounded initial credit. The caller supplies elapsed milliseconds and forward distance.
 class MovementBudget {
 public:
-    MovementBudget(uint32_t rate, uint16_t capacity)
-        : rate_(rate), capacity_(uint64_t(capacity) * 1000), credit_(0) {}
+    MovementBudget(uint32_t rate, uint16_t capacity, uint16_t initialCredit = 0)
+        : rate_(rate), capacity_(uint64_t(capacity) * 1000), credit_(uint64_t(initialCredit > capacity ? capacity : initialCredit) * 1000) {}
     void accrue(uint32_t elapsedMs) {
         const uint64_t added = uint64_t(rate_) * elapsedMs;
         const uint64_t room = capacity_ - credit_;

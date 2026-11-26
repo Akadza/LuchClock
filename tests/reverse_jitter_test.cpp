@@ -14,8 +14,8 @@ int main() {
     position_math::MovementFilter stuck(56*512, 100, 512, 100, 512);
     CHECK(!stuck.update(57*512, 5120));
     CHECK(stuck.update(57*512, 25));
-    for (int i = 0; i < 5; ++i) CHECK(!stuck.update(56*512, 25) && stuck.valid());
-    CHECK(!stuck.update(56*512, 100) && !stuck.valid() && stuck.angle() == 57*512);
+    for (int i = 0; i < 4; ++i) CHECK(!stuck.update(56*512, 25) && stuck.valid());
+    CHECK(!stuck.update(56*512, 25) && !stuck.valid() && stuck.angle() == 57*512);
     // Reverse distance larger than the explicit tolerance is suspicious immediately.
     position_math::MovementFilter large(56*512, 100, 512, 100, 512);
     CHECK(!large.update(57*512, 5120));
