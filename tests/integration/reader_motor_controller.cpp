@@ -23,6 +23,7 @@ bool settingsPersistedMatches(){return false;}
 bool settingsValidate(const RuntimeSettings&){return true;}
 bool settingsChange(const RuntimeSettings& s,bool){settingsValue=s;return true;}
 uint8_t calibrationOffset(){return offset;}
+uint16_t calibrationOffsetFor(uint16_t){return offset;}
 void eventAdd(const String&,EventCode,EventLevel){}
 void eventReset(){}
 class Encoder final:public IEncoder {
@@ -40,7 +41,10 @@ public:
  int16_t encoderCalibratedPosition() override{return ::encoderCalibratedPosition();}
  int encoderMinutes() override{return ::encoderMinutes();}
  uint8_t address() override{return ::encoderAddressValue();}
- uint8_t raw() override{return ::encoderRawValue();}
+ int16_t raw() override{return ::encoderRawValue();}
+ uint16_t resolution() override{return ::encoderResolution();}
+ const char* type() override{return ::encoderType();}
+ const char* magnetState() override{return ::encoderMagnetState();}
 };
 IEncoder& encoder(){static Encoder e;return e;}
 class Motor final:public IMotor {
@@ -79,8 +83,8 @@ INetworkStatus& networkStatus(){static Network n;return n;}
 class Calibration final:public ICalibration {
 public:
  bool saved() override{return false;}
- uint8_t offset() override{return ::offset;}
- int8_t signedOffset() override{return ::offset;}
+ uint16_t offset() override{return ::offset;}
+ int16_t signedOffset() override{return ::offset;}
  bool needed(uint8_t,int16_t) override{return true;}
  bool save(uint8_t,int16_t) override{::offset=2;return true;}
  bool timeAllowed(uint8_t& m) override{m=0;return fresh;}

@@ -21,7 +21,10 @@ public:
  int16_t encoderCalibratedPosition() override {return ::encoderCalibratedPosition();}
  int encoderMinutes() override {return ::encoderMinutes();}
  uint8_t address() override {return ::encoderAddressValue();}
- uint8_t raw() override {return ::encoderRawValue();}
+ int16_t raw() override {return ::encoderRawValue();}
+ uint16_t resolution() override{return ::encoderResolution();}
+ const char* type() override{return ::encoderType();}
+ const char* magnetState() override{return ::encoderMagnetState();}
 };
 IEncoder& encoder(){static EncoderAdapter instance;return instance;}
 class MotorAdapter final: public IMotor {
@@ -69,11 +72,11 @@ INetworkStatus& networkStatus(){static NetworkStatusAdapter instance;return inst
 
 class CalibrationAdapter final:public ICalibration {
 public:
- bool saved() override{return calibrationSaved();}
- uint8_t offset() override{return calibrationOffset();}
- int8_t signedOffset() override{return calibrationSignedOffset();}
- bool needed(uint8_t minute,int16_t raw) override{return calibrationNeeded(minute,raw);}
- bool save(uint8_t minute,int16_t raw) override{return calibrationSave(minute,raw);}
+ bool saved() override{return calibrationSavedFor(encoderResolution());}
+ uint16_t offset() override{return calibrationOffsetFor(encoderResolution());}
+ int16_t signedOffset() override{return calibrationSignedOffsetFor(encoderResolution());}
+ bool needed(uint8_t minute,int16_t raw) override{return calibrationNeededFor(encoderResolution(),minute,raw);}
+ bool save(uint8_t minute,int16_t raw) override{return calibrationSaveFor(encoderResolution(),minute,raw);}
  bool timeAllowed(uint8_t& minute) override{return calibrationTimeAllowed(minute);}
 };
 ICalibration& calibration(){static CalibrationAdapter instance;return instance;}

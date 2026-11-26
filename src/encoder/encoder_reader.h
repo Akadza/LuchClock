@@ -3,7 +3,10 @@
 
 // Shared encoder state: implementation lives in encoder_reader.cpp.
 uint8_t encoderAddressValue();
-uint8_t encoderRawValue();
+int16_t encoderRawValue();
+uint16_t encoderResolution();
+const char* encoderType();
+const char* encoderMagnetState();
 int16_t encoderRawPosition(); // Только диагностика и калибровка.
 int32_t encoderConfirmedAngle(); // 0..65535, -1 при недостоверности.
 int16_t encoderCalibratedPosition(); // Рабочая позиция стрелки.

@@ -21,9 +21,13 @@ static const uint8_t encoderCodes[128] PROGMEM = {
   254, 126, 124, 116, 112, 113, 49, 48, 16, 144, 146, 154, 158, 30, 94, 95
 };
 static uint8_t encoderAddress = 0;
-static uint8_t encoderRaw = 255;
+static int16_t encoderRaw = -1;
+static uint16_t resolution = 0;
+static const char* sensorType = "none";
+static const char* magnetState = "not_applicable";
+static uint16_t lockedResolution = 0;
 static int16_t encoderPosition = -1;
-static uint8_t encoderCandidate = 255;
+static int16_t encoderCandidate = -1;
 static uint8_t encoderStableCount = 0;
 static position_math::MovementFilter filter(0, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
 static position_math::ClockTracker tracker(0);
@@ -31,7 +35,7 @@ static bool initialized = false;
 static uint32_t activeStableSamples = 0;
 static bool previousHealthy = false;
 static uint16_t calibratedAngle(uint16_t rawAngle) {
-  return position_math::applyOffset(rawAngle, static_cast<uint16_t>(calibrationOffset() * 512U));
+  return position_math::applyOffset(rawAngle, static_cast<uint16_t>(uint32_t(calibrationOffsetFor(resolution)) * (resolution ? 65536UL/resolution : 0)));
 }
 static void loseObservation() {
   if (initialized) Serial.println(F("[ENCODER] Observation lost; hour unknown"));
@@ -41,7 +45,7 @@ static void loseObservation() {
   initialized = false;
   encoderPosition = -1;
   encoderStableCount = 0;
-  encoderCandidate = 255;
+  encoderCandidate = -1;
 }
 static unsigned long encoderLastRead = 0;
 static unsigned long encoderLastProbe = 0;
@@ -50,23 +54,38 @@ static bool encoderProbe(uint8_t addr) {
   Wire.beginTransmission(addr);
   return Wire.endTransmission() == 0;
 }
+// AS5600 status and RAW ANGLE. No configuration/OTP writes.
+static bool asRead(uint8_t reg,uint8_t* bytes,uint8_t n){
+  Wire.beginTransmission(0x36);Wire.write(reg);
+  if(Wire.endTransmission(false)!=0 || Wire.requestFrom(uint8_t(0x36),n)!=n)return false;
+  for(uint8_t i=0;i<n;++i){const int v=Wire.read();if(v<0)return false;bytes[i]=uint8_t(v);}
+  return true;
+}
 static void encoderFindDevice() {
-  encoderAddress = 0;
-  loseObservation();
-  for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
-    if (encoderProbe(addr)) { encoderAddress = addr; break; }
+  encoderAddress=0;resolution=0;encoderRaw=-1;loseObservation();
+  sensorType="none";magnetState="not_applicable";
+  uint8_t pcf=0;unsigned count=0;
+  for(uint8_t a=0x20;a<=0x27;++a)if(encoderProbe(a)){pcf=a;++count;}
+  for(uint8_t a=0x38;a<=0x3f;++a)if(encoderProbe(a)){pcf=a;++count;}
+  const bool as=encoderProbe(0x36);
+  if(count+(as?1:0)>1){sensorType="conflict";Serial.println(F("[ENCODER] Multiple sensors; OFF"));return;}
+  const uint16_t found=as?4096:(pcf?128:0);
+  if(!found)return;
+  if(lockedResolution && found!=lockedResolution){sensorType="conflict";Serial.println(F("[ENCODER] Sensor changed; reboot required"));return;}
+  if(as){
+    uint8_t status=0;
+    if(!asRead(0x0B,&status,1)){sensorType="as5600";magnetState="read_error";return;}
+    encoderAddress=0x36;resolution=4096;sensorType="as5600";magnetState="checking";
+  }else{
+    Wire.beginTransmission(pcf);Wire.write(0xff);
+    if(Wire.endTransmission()!=0)return;
+    encoderAddress=pcf;resolution=128;sensorType="ace128";
   }
-  if (!encoderAddress) for (uint8_t addr = 0x38; addr <= 0x3f; ++addr) {
-    if (encoderProbe(addr)) { encoderAddress = addr; break; }
-  }
-  if (encoderAddress) {
-    Wire.beginTransmission(encoderAddress);
-    Wire.write(0xff); // PCF8574 inputs (quasi-bidirectional pull-ups).
-    if (Wire.endTransmission() != 0) encoderAddress = 0;
-  }
-  Serial.printf("[ENCODER] PCF8574 address: 0x%02X\n", encoderAddress);
+  lockedResolution=resolution;
+  Serial.printf("[ENCODER] %s address: 0x%02X\n",sensorType,encoderAddress);
 }
 void encoderSetup() {
+  lockedResolution=0;
   Wire.begin(4, 5); // NodeMCU D2=SDA, D1=SCL.
   Wire.setClock(100000);
   encoderFindDevice();
@@ -88,25 +107,37 @@ void encoderLoop() {
     loseObservation();
     return;
   }
-  if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
+  int16_t raw=-1;
+  bool readOk=true;
+  if(resolution==4096){
+    uint8_t status=0, angleBytes[2]={};
+    readOk=asRead(0x0B,&status,1)&&asRead(0x0C,angleBytes,2);
+    if(readOk){
+      encoderRaw=int16_t((uint16_t(angleBytes[0]&0x0f)<<8)|angleBytes[1]);
+      magnetState=!(status&0x20)?"missing":(status&0x10)?"weak":(status&0x08)?"strong":"ok";
+      if((status&0x38)==0x20)raw=encoderRaw;
+    }else magnetState="read_error";
+  }else{
+    readOk=Wire.requestFrom((uint8_t)encoderAddress,(uint8_t)1)==1;
+    if(readOk){
+      const int v=Wire.read();encoderRaw=v;
+      for(int i=0;i<128;++i)if(pgm_read_byte(&encoderCodes[i])==v){raw=i;break;}
+    }
+  }
+  if (!readOk) {
     Serial.println(F("[ENCODER] I2C read failed"));
     encoderAddress = 0;
     encoderLastProbe = now;
     loseObservation();
     return;
   }
-  const uint8_t value = (uint8_t)Wire.read();
-  encoderRaw = value;
-  int16_t raw = -1;
-  for (int i = 0; i < 128; ++i) {
-    if (pgm_read_byte(&encoderCodes[i]) == value) { raw = i; break; }
-  }
+  const int16_t value=encoderRaw;
   uint16_t angle = 0;
-  if (!position_math::normalizePosition(raw, 128, angle)) {
+  if (!position_math::normalizePosition(raw, resolution, angle)) {
     encoderStableCount = 0;
     if (initialized) {
       filter.missing(elapsed);
-      if (previousHealthy) Serial.printf("[ENCODER] Invalid ACE code=%u; holding confirmed angle=%u\n", unsigned(value), unsigned(filter.angle()));
+      if (previousHealthy) Serial.printf("[ENCODER] Invalid sensor sample=%u; holding confirmed angle=%u\n", unsigned(value), unsigned(filter.angle()));
       previousHealthy = false;
       if (!filter.valid()) loseObservation();
     }
@@ -119,7 +150,7 @@ void encoderLoop() {
       encoderStableCount = 0;
     }
     if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
-    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples, 512);
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, resolution==4096?128:DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, resolution==4096?64:DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples, resolution==4096?48:512, resolution==4096?32:0);
     tracker.beginObservation(angle);
     encoderPosition = raw;
     activeStableSamples = settingsCurrent().encoderStableSamples;
@@ -133,7 +164,7 @@ void encoderLoop() {
       loseObservation();
       return;
     }
-    encoderPosition = (filter.angle() / 512 + 128U - calibrationOffset()) % 128U;
+    encoderPosition = (filter.angle() / (65536UL/resolution) + resolution - calibrationOffsetFor(resolution)) % resolution;
   }
   if (previousHealthy != filter.healthy()) {
     Serial.printf("[ENCODER] health=%u raw=%u angle=%u confirmed=%u\n", unsigned(filter.healthy()), unsigned(value), unsigned(angle), unsigned(filter.angle()));
@@ -151,7 +182,7 @@ uint32_t encoderClockPosition() { return encoderHourKnown() ? tracker.position()
 bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(hour); }
 void encoderCalibrationChanged() {
   if (encoderValid()) {
-    const uint16_t angle = calibratedAngle(static_cast<uint16_t>(encoderPosition * 512U));
+    const uint16_t angle = calibratedAngle(static_cast<uint16_t>(uint32_t(encoderPosition) * (65536UL/resolution)));
     if (filter.rebase(angle)) tracker.beginObservation(angle);
     else loseObservation();
   }
@@ -160,12 +191,15 @@ void encoderCalibrationChanged() {
 int32_t encoderConfirmedAngle(){return encoderValid()?static_cast<int32_t>(filter.angle()):-1;}
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
-  return encoderValid()?filter.angle()/512:-1;
+  return encoderValid()?filter.angle()/(65536UL/resolution):-1;
 }
 int encoderMinutes(){
   const int16_t position=encoderCalibratedPosition();
-  return position>=0?position*60/128:-1;
+  return position>=0?int32_t(position)*60/resolution:-1;
 }
 
 uint8_t encoderAddressValue(){return encoderAddress;}
-uint8_t encoderRawValue(){return encoderRaw;}
+int16_t encoderRawValue(){return encoderRaw;}
+uint16_t encoderResolution(){return resolution;}
+const char* encoderType(){return sensorType;}
+const char* encoderMagnetState(){return magnetState;}

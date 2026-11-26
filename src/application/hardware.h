@@ -17,7 +17,10 @@ public:
  virtual int16_t encoderCalibratedPosition()=0;
  virtual int encoderMinutes()=0;
  virtual uint8_t address()=0;
- virtual uint8_t raw()=0;
+ virtual int16_t raw()=0;
+ virtual uint16_t resolution()=0;
+ virtual const char* type()=0;
+ virtual const char* magnetState()=0;
 };
 IEncoder& encoder();
 class IMotor {
@@ -62,8 +65,8 @@ class ICalibration {
 public:
  virtual ~ICalibration()=default;
  virtual bool saved()=0;
- virtual uint8_t offset()=0;
- virtual int8_t signedOffset()=0;
+ virtual uint16_t offset()=0;
+ virtual int16_t signedOffset()=0;
  virtual bool needed(uint8_t minute,int16_t raw)=0;
  virtual bool save(uint8_t minute,int16_t raw)=0;
  virtual bool timeAllowed(uint8_t& minute)=0;

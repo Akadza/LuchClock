@@ -20,6 +20,9 @@ struct ControllerState {
  int clockHour;
  uint32_t clockPosition;
  int encoderAddress;
+ int encoderResolution;
+ String encoderType;
+ String encoderMagnetState;
  int encoderRaw;
  int encoderPosition;
  int encoderRawPosition;
