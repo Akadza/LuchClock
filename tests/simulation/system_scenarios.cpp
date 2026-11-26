@@ -163,9 +163,6 @@ static void boot(unsigned p){
  Wire.connected=true;position(p);settingsSetup();calibrationSetup();encoderSetup();timeSetup();controllerSetup();
  hold(100);CHECK(encoderHealthy() && !encoderHourKnown() && output==LOW);
 }
-static void step(unsigned interval){
- position(rawPos+1);hold(interval);checkInvariant();
-}
 static void expectLost(bool moving){
  CHECK(!encoderHourKnown() && controller().state().mode=="off" && output==LOW);
  CHECK(motorAutoFault()==moving);
