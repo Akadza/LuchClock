@@ -28,6 +28,8 @@ static uint8_t encoderStableCount = 0;
 static position_math::MovementFilter filter(0, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
 static position_math::ClockTracker tracker(0);
 static bool initialized = false;
+static uint32_t activeStableSamples = 0;
+static bool previousHealthy = false;
 static uint16_t calibratedAngle(uint16_t rawAngle) {
   return position_math::applyOffset(rawAngle, static_cast<uint16_t>(calibrationOffset() * 512U));
 }
@@ -79,6 +81,11 @@ void encoderLoop() {
   if (now - encoderLastRead < settingsCurrent().encoderPollMs) return;
   const uint32_t elapsed = now - encoderLastRead;
   encoderLastRead = now;
+  if (initialized && (elapsed >= DEFAULT_ENCODER_ANOMALY_MS || activeStableSamples != settingsCurrent().encoderStableSamples)) {
+    Serial.println(F("[ENCODER] Observation interrupted"));
+    loseObservation();
+    return;
+  }
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
     encoderAddress = 0;
     loseObservation();
@@ -106,10 +113,12 @@ void encoderLoop() {
       encoderStableCount = 0;
     }
     if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
-    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples);
     tracker.beginObservation(angle);
     encoderPosition = raw;
+    activeStableSamples = settingsCurrent().encoderStableSamples;
     initialized = true;
+    previousHealthy = true;
     return;
   }
   if (filter.update(angle, elapsed)) {
@@ -118,6 +127,10 @@ void encoderLoop() {
       return;
     }
     encoderPosition = (filter.angle() / 512 + 128U - calibrationOffset()) % 128U;
+  }
+  if (previousHealthy != filter.healthy()) {
+    Serial.printf("[ENCODER] health=%u raw=%u angle=%u confirmed=%u\n", unsigned(filter.healthy()), unsigned(value), unsigned(angle), unsigned(filter.angle()));
+    previousHealthy = filter.healthy();
   }
   if (!filter.valid()) loseObservation();
 }
@@ -132,7 +145,7 @@ bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(h
 void encoderCalibrationChanged() {
   if (encoderValid()) {
     const uint16_t angle = calibratedAngle(static_cast<uint16_t>(encoderPosition * 512U));
-    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples);
     tracker.beginObservation(angle);
   }
   else tracker.loseContinuity();
