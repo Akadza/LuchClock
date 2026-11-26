@@ -23,10 +23,11 @@ static bool modeIsReady() {
 
 
 static bool calibrationReady(){
- return (currentMode==ClockMode::Manual || currentMode==ClockMode::Off) && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderValid() && clockTime().timeIsFresh();
+ return (currentMode==ClockMode::Manual || currentMode==ClockMode::Off) && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault() && encoder().encoderHealthy() && clockTime().timeIsFresh();
 }
 static bool calibrationAllowed(){uint8_t minute=0;return calibrationReady() && calibration().timeAllowed(minute) && calibration().needed(minute,encoder().encoderRawPosition());}
 static bool settingsAllowed(){return currentMode!=ClockMode::Auto && motor().motorState()==MOTOR_STOPPED && !modeTransition;}
+static bool clockHourAllowed(){return currentMode==ClockMode::Manual && modeIsReady() && !motor().motorAutoFault() && encoder().encoderHealthy();}
 class Controller final:public IController {
 public:
  ControllerState snapshot() const override {
@@ -37,6 +38,10 @@ public:
  s.ip=networkStatus().ip();
  s.encoderConnected=encoder().encoderConnected();
  s.encoderValid=encoder().encoderValid();
+ s.encoderHealthy=encoder().encoderHealthy();
+ s.clockHourKnown=encoder().encoderHourKnown();
+ s.clockHour=encoder().encoderClockHour();
+ s.clockPosition=encoder().encoderClockPosition();
  s.encoderAddress=encoder().address();
  s.encoderRaw=encoder().raw();
  s.encoderPosition=encoder().encoderCalibratedPosition();
@@ -46,7 +51,7 @@ public:
  uint8_t minute=0;
  s.localClockMs=0;
  const bool localValid=clockTime().localClock(s.localClockMs,minute);
- s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderValid() && s.calibrationSaved && !calibration().needed(minute,encoder().encoderRawPosition());
+ s.calibrationCurrent=localValid && clockTime().timeIsFresh() && encoder().encoderHealthy() && s.calibrationSaved && !calibration().needed(minute,encoder().encoderRawPosition());
  s.calibrationOffset=calibration().offset();
  s.calibrationSignedOffset=(int)calibration().signedOffset();
  s.motorRun=motor().motorRunElapsedMs();
@@ -68,20 +73,24 @@ public:
  RuntimeSettings settings() const override {return settingsCurrent();}
  bool settingsSaved() const override {return settingsPersistedMatches();}
  ModeState state() const override {
- return {modeText(),(currentMode==ClockMode::Manual),modeTransition,currentMode==ClockMode::Auto && autoReady && modeIsReady() && !motor().motorAutoFault(),
+ return {modeText(),(currentMode==ClockMode::Manual),modeTransition,currentMode==ClockMode::Auto && autoReady && modeIsReady() && encoder().encoderHealthy() && encoder().encoderHourKnown() && clockTime().timeIsFresh() && !motor().motorAutoFault(),
  (currentMode==ClockMode::Manual) && modeIsReady() && motor().motorCanForward(),(currentMode==ClockMode::Manual) && modeIsReady() && motor().motorCanReverse(),
  (currentMode==ClockMode::Manual) && (motor().motorState()==MOTOR_FORWARD || motor().motorState()==MOTOR_REVERSE),
- encoder().encoderValid() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
+ encoder().encoderHealthy() && encoder().encoderHourKnown() && clockTime().timeIsFresh() && motor().motorManualPauseRemainingMs()==0 && motor().motorState()==MOTOR_STOPPED && !modeTransition && !motor().motorAutoFault(),
  calibrationAllowed(),settingsAllowed(),modeWaitRemainingMs(),((currentMode==ClockMode::Manual)?settingsCurrent().manualLimitSec:settingsCurrent().autoLimitSec)*1000UL,
- currentMode!=ClockMode::Manual && encoder().encoderValid() && !motor().motorAutoFault() && modeIsReady(),
- currentMode!=ClockMode::Off, currentMode==ClockMode::Off && encoder().encoderValid() && motor().motorAutoFault(), currentMode==ClockMode::Off && motor().motorAutoFault()};
+ currentMode!=ClockMode::Manual && encoder().encoderHealthy() && !motor().motorAutoFault() && modeIsReady(),
+ currentMode!=ClockMode::Off, currentMode==ClockMode::Off && encoder().encoderHealthy() && motor().motorAutoFault(), currentMode==ClockMode::Off && motor().motorAutoFault(), clockHourAllowed()};
  }
  CommandResult setMode(const String& mode) override {
   if(mode==modeText())return {ResultCode::Ok,""};
-  if (mode != "off" && !encoder().encoderValid()) {
-    return {ResultCode::Blocked,"Энкодер не подключён: доступен только режим Выключен"};
+  if (mode != "off" && !encoder().encoderHealthy()) {
+    return {ResultCode::Blocked,"Нет достоверного показания энкодера"};
   }
 
+  if (mode == "auto" && !clockTime().timeIsFresh()) return {ResultCode::Blocked,"Нет достоверного системного времени"};
+  if (mode == "auto" && !encoder().encoderHourKnown()) {
+    return {ResultCode::Blocked,"Сначала задайте час в ручном режиме"};
+  }
   if (mode == "auto" && motor().motorManualPauseRemainingMs()>0) {
     return {ResultCode::Blocked,"Во время паузы после лимита автоматический режим запрещён"};
   }
@@ -138,7 +147,7 @@ return {ResultCode::Ok,""};}
   if (action == "stop" && motor().motorState()!=MOTOR_FORWARD && motor().motorState()!=MOTOR_REVERSE) {
     return {ResultCode::Blocked,"Двигатель уже остановлен"};
   }
-  if (action != "stop" && (!modeIsReady() || !encoder().encoderValid())) {
+  if (action != "stop" && (!modeIsReady() || !encoder().encoderHealthy())) {
     return {ResultCode::Blocked,"Mode transition or motor cooldown active"};
   }
   if (!motor().motorCommand(action)) {
@@ -153,11 +162,20 @@ return {ResultCode::Ok,""};}
  const int16_t raw=encoder().encoderRawPosition();
  if(raw<0 || raw>=128)return {ResultCode::Blocked,"Калибровка недоступна"};
  if(!calibration().needed(minute,raw))return {ResultCode::Blocked,""};
+ const uint8_t previousOffset=calibration().offset();
  if(!calibration().save(minute,raw))return {ResultCode::Failed,"Не удалось сохранить калибровку"};
+ if(calibration().offset()!=previousOffset) encoder().encoderCalibrationChanged();
  eventAdd("Калибровка энкодера сохранена",EventCode::CALIBRATION_SAVED,EventLevel::Info);return {ResultCode::Ok,""};
  }
+ CommandResult setClockHour(uint8_t hour) override {
+  if(hour>=12)return {ResultCode::Invalid,"Час должен быть от 0 до 11"};
+  if(!clockHourAllowed())return {ResultCode::Blocked,"Перейдите в ручной режим и остановите двигатель"};
+  if(!encoder().encoderSetHour(hour))return {ResultCode::Failed,"Не удалось задать час"};
+  eventAdd(String("Час задан оператором: ")+String(hour),EventCode::GENERAL,EventLevel::Info);
+  return {ResultCode::Ok,""};
+ }
  CommandResult resetFault() override {
- if(currentMode!=ClockMode::Off || !encoder().encoderValid() || !motor().motorResetAutoFault())return {ResultCode::Blocked,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
+ if(currentMode!=ClockMode::Off || !encoder().encoderHealthy() || !motor().motorResetAutoFault())return {ResultCode::Blocked,"Перейдите в Выключен, проверьте энкодер и наличие аварии"};
  eventAdd("Авария сброшена оператором",EventCode::FAULT_RESET,EventLevel::Info);return {ResultCode::Ok,""};
  }
  CommandResult changeSettings(const RuntimeSettings& next,bool save) override {
@@ -182,6 +200,9 @@ void controllerSetup(){
 
 }
 void controllerLoop(){
+  if(currentMode==ClockMode::Auto && !clockTime().timeIsFresh()) {
+    motor().motorStop();
+  }
   const bool encoderNowValid=encoder().encoderValid();
   if (!encoderNowValid && currentMode!=ClockMode::Off) {
     // При потере датчика во время движения motorLoop уже фиксирует аварию.
@@ -194,7 +215,7 @@ void controllerLoop(){
   if(fault && !previousAutoFault){
     String reason=motor().motorFaultReason();
     eventAdd(reason=="no_motion" ? "Двигатель остановлен: энкодер не фиксирует движение" :
-      reason=="encoder_lost" ? "Потеря связи с энкодером во время движения" :
+      reason=="encoder_lost" ? "Потеря достоверности энкодера во время движения" :
       "Критическая ошибка: привод заблокирован", reason=="no_motion"?EventCode::NO_MOTION:reason=="encoder_lost"?EventCode::ENCODER_LOST:EventCode::MOTOR_FAULT,EventLevel::Critical);
   }
   if(fault && currentMode!=ClockMode::Off){

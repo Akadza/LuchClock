@@ -8,7 +8,7 @@ static unsigned long waitStarted=0, runStarted=0, manualPausedAt=0;
 static bool manualPaused=false, autoMode=false, autoFault=false;
 static unsigned long manualPauseDurationMs=0;
 static unsigned long stopDelayMs=DEFAULT_MOTOR_STOP_DELAY_MS;
-static int16_t lastPosition=-1;
+static int32_t lastPosition=-1;
 static unsigned long lastMovementAt=0;
 static const char* faultReason="";
 
@@ -45,7 +45,7 @@ bool motorAutoFault(){return autoFault;}
 const char* motorFaultReason(){return faultReason;}
 void motorSetAutoMode(bool enabled){autoMode=enabled;}
 bool motorResetAutoFault(){
-  if(!autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
+  if(!encoder().encoderHealthy() || !autoFault || state==MOTOR_FORWARD || state==MOTOR_REVERSE)return false;
   autoFault=false;faultReason="";
   if(state==MOTOR_FAULT)state=MOTOR_STOPPED;
   Serial.println(F("[MOTOR] Auto fault reset (no restart)"));
@@ -53,7 +53,7 @@ bool motorResetAutoFault(){
 }
 bool motorCanForward(){
   return !autoMode && !autoFault && state==MOTOR_STOPPED &&
-    motorManualPauseRemainingMs()==0 && encoder().encoderValid();
+    motorManualPauseRemainingMs()==0 && encoder().encoderHealthy();
 }
 bool motorCanReverse(){return false;}
 bool motorCanStop(){return true;}
@@ -75,7 +75,7 @@ void motorLoop(){
   }
   if(state==MOTOR_FORWARD){
     // Encoder movement must be observed during motor operation.
-    const int16_t position=encoder().encoderRawPosition();
+    const int32_t position=encoder().encoderConfirmedAngle();
     if(position!=lastPosition){
       lastPosition=position;lastMovementAt=millis();
     }else if(millis()-lastMovementAt>=settingsCurrent().noMotionWarnSec*1000UL){
@@ -109,7 +109,7 @@ bool motorCommand(const String& action){
   if(action=="stop"){motorStop();return true;}
   if(action!="forward" || !motorCanForward())return false;
   runStarted=millis();state=MOTOR_FORWARD;
-  lastPosition=encoder().encoderRawPosition();lastMovementAt=millis();
+  lastPosition=encoder().encoderConfirmedAngle();lastMovementAt=millis();
   digitalWrite(MOTOR_OUTPUT_PIN,HIGH);
   Serial.println(F("[MOTOR] FORWARD"));
   return true;

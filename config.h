@@ -1,7 +1,7 @@
 #pragma once
 #include "secrets.h"
 
-#define FIRMWARE_VERSION "1.18" // Версия прошивки — менять только здесь.
+#define FIRMWARE_VERSION "1.19" // Версия прошивки — менять только здесь.
 #define API_VERSION 1 // Версия внешнего контракта API.
 
 // Имя конкретного контроллера. Менять здесь перед прошивкой каждой ESP.

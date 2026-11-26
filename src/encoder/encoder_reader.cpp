@@ -1,5 +1,7 @@
 #include "encoder_reader.h"
 #include "encoder_calibration.h"
+#include "movement_filter.h"
+#include "clock_tracker.h"
 #include "../system_settings.h"
 #include <Wire.h>
 #include <pgmspace.h>
@@ -23,7 +25,24 @@ static uint8_t encoderRaw = 255;
 static int16_t encoderPosition = -1;
 static uint8_t encoderCandidate = 255;
 static uint8_t encoderStableCount = 0;
-static bool decoded = false;
+static position_math::MovementFilter filter(0, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+static position_math::ClockTracker tracker(0);
+static bool initialized = false;
+static uint32_t activeStableSamples = 0;
+static bool previousHealthy = false;
+static uint16_t calibratedAngle(uint16_t rawAngle) {
+  return position_math::applyOffset(rawAngle, static_cast<uint16_t>(calibrationOffset() * 512U));
+}
+static void loseObservation() {
+  if (initialized) Serial.println(F("[ENCODER] Observation lost; hour unknown"));
+  filter.invalidate();
+  previousHealthy = false;
+  tracker.loseContinuity();
+  initialized = false;
+  encoderPosition = -1;
+  encoderStableCount = 0;
+  encoderCandidate = 255;
+}
 static unsigned long encoderLastRead = 0;
 static unsigned long encoderLastProbe = 0;
 
@@ -33,10 +52,7 @@ static bool encoderProbe(uint8_t addr) {
 }
 static void encoderFindDevice() {
   encoderAddress = 0;
-  encoderPosition = -1;
-  decoded = false;
-  encoderStableCount = 0;
-  encoderCandidate = 255;
+  loseObservation();
   for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
     if (encoderProbe(addr)) { encoderAddress = addr; break; }
   }
@@ -65,39 +81,86 @@ void encoderLoop() {
     return;
   }
   if (now - encoderLastRead < settingsCurrent().encoderPollMs) return;
+  const uint32_t elapsed = now - encoderLastRead;
   encoderLastRead = now;
+  if (initialized && (elapsed >= DEFAULT_ENCODER_ANOMALY_MS || activeStableSamples != settingsCurrent().encoderStableSamples)) {
+    Serial.println(F("[ENCODER] Observation interrupted"));
+    loseObservation();
+    return;
+  }
   if (Wire.requestFrom((uint8_t)encoderAddress, (uint8_t)1) != 1) {
+    Serial.println(F("[ENCODER] I2C read failed"));
     encoderAddress = 0;
-    encoderPosition = -1;
-    decoded = false;
-    encoderStableCount = 0;
-    encoderCandidate = 255;
+    encoderLastProbe = now;
+    loseObservation();
     return;
   }
   const uint8_t value = (uint8_t)Wire.read();
-  if (value != encoderCandidate) {
-    encoderCandidate = value;
-    encoderStableCount = 1;
+  encoderRaw = value;
+  int16_t raw = -1;
+  for (int i = 0; i < 128; ++i) {
+    if (pgm_read_byte(&encoderCodes[i]) == value) { raw = i; break; }
+  }
+  uint16_t angle = 0;
+  if (!position_math::normalizePosition(raw, 128, angle)) {
+    encoderStableCount = 0;
+    if (initialized) {
+      filter.missing(elapsed);
+      if (previousHealthy) Serial.printf("[ENCODER] Invalid ACE code=%u; holding confirmed angle=%u\n", unsigned(value), unsigned(filter.angle()));
+      previousHealthy = false;
+      if (!filter.valid()) loseObservation();
+    }
     return;
   }
-  if (encoderStableCount < settingsCurrent().encoderStableSamples) ++encoderStableCount;
-  if (encoderStableCount < settingsCurrent().encoderStableSamples) return;
-  if(decoded && encoderRaw==value)return;
-  decoded=true;
-  encoderRaw = value;
-  encoderPosition = -1;
-  for (int i = 0; i < 128; ++i) {
-    if (pgm_read_byte(&encoderCodes[i]) == value) {
-      encoderPosition = i;
-      break;
+  angle = calibratedAngle(angle);
+  if (!initialized) {
+    if (value != encoderCandidate) {
+      encoderCandidate = value;
+      encoderStableCount = 0;
     }
+    if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE, settingsCurrent().encoderStableSamples, 512);
+    tracker.beginObservation(angle);
+    encoderPosition = raw;
+    activeStableSamples = settingsCurrent().encoderStableSamples;
+    initialized = true;
+    previousHealthy = true;
+    Serial.printf("[ENCODER] Observation initialized; raw=%u confirmed=%u; hour unknown\n", unsigned(value), unsigned(angle));
+    return;
   }
+  if (filter.update(angle, elapsed)) {
+    if (!tracker.advance(filter.angle(), filter.lastDelta())) {
+      loseObservation();
+      return;
+    }
+    encoderPosition = (filter.angle() / 512 + 128U - calibrationOffset()) % 128U;
+  }
+  if (previousHealthy != filter.healthy()) {
+    Serial.printf("[ENCODER] health=%u raw=%u angle=%u confirmed=%u\n", unsigned(filter.healthy()), unsigned(value), unsigned(angle), unsigned(filter.angle()));
+    previousHealthy = filter.healthy();
+  }
+  if (!filter.valid()) loseObservation();
 }
+
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
+bool encoderHealthy() { return encoderValid() && filter.healthy(); }
+bool encoderHourKnown() { return encoderValid() && tracker.known(); }
+int encoderClockHour() { return encoderHourKnown() ? int(tracker.position() / 65536UL) : -1; }
+uint32_t encoderClockPosition() { return encoderHourKnown() ? tracker.position() : 0; }
+bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(hour); }
+void encoderCalibrationChanged() {
+  if (encoderValid()) {
+    const uint16_t angle = calibratedAngle(static_cast<uint16_t>(encoderPosition * 512U));
+    if (filter.rebase(angle)) tracker.beginObservation(angle);
+    else loseObservation();
+  }
+  else tracker.loseContinuity();
+}
+int32_t encoderConfirmedAngle(){return encoderValid()?static_cast<int32_t>(filter.angle()):-1;}
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
-  return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;
+  return encoderValid()?filter.angle()/512:-1;
 }
 int encoderMinutes(){
   const int16_t position=encoderCalibratedPosition();

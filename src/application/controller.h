@@ -6,7 +6,7 @@ struct CommandResult { ResultCode code; const char* message; };
 struct ModeState {
  String mode; bool manual, transition, autoReady, canForward, canReverse, canStop, canAuto, calibrationAllowed, settingsAllowed;
  unsigned long waitMs, motorLimitMs;
- bool canManual, canOff, canResetFault, showFaultReset;
+ bool canManual, canOff, canResetFault, showFaultReset, canSetClockHour;
 };
 struct ControllerState {
  ModeState mode;
@@ -15,6 +15,10 @@ struct ControllerState {
  String ip;
  bool encoderConnected;
  bool encoderValid;
+ bool encoderHealthy;
+ bool clockHourKnown;
+ int clockHour;
+ uint32_t clockPosition;
  int encoderAddress;
  int encoderRaw;
  int encoderPosition;
@@ -49,6 +53,7 @@ public:
  virtual CommandResult setMode(const String& mode)=0;
  virtual CommandResult command(const String& action)=0;
  virtual CommandResult calibrate()=0;
+ virtual CommandResult setClockHour(uint8_t hour)=0;
  virtual CommandResult resetFault()=0;
  virtual CommandResult changeSettings(const RuntimeSettings& next,bool save)=0;
 };
