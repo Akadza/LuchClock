@@ -18,6 +18,7 @@ unsigned long millis();
 void digitalWrite(uint8_t pin, uint8_t value);
 void pinMode(uint8_t pin, uint8_t mode);
 struct FakeSerial {
+    template<class T> void print(const T&) {}
     template<class... T> void printf(const char*, T...) {}
     template<class T> void println(const T&) {}
 };

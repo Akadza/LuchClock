@@ -28,3 +28,9 @@ jobs:
           cp secrets.example.h secrets.h
           g++ -std=c++11 -Wall -Wextra -Werror -pedantic -fsanitize=undefined -fno-sanitize-recover=all -Itests/fakes tests/integration/reader_motor_controller.cpp src/encoder/encoder_reader.cpp src/motor/motor_controller.cpp src/application/controller.cpp -o /tmp/luchclock-integration
           /tmp/luchclock-integration
+      - name: Run virtual clock and fault scenarios with production modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          TZ=UTC g++ -std=c++11 -Wall -Wextra -Werror -pedantic -fsanitize=undefined -fno-sanitize-recover=all -Itests/fakes tests/simulation/system_scenarios.cpp src/encoder/encoder_reader.cpp src/encoder/encoder_calibration.cpp src/system_settings.cpp src/network/time_manager.cpp src/motor/motor_controller.cpp src/application/controller.cpp -o /tmp/luchclock-simulation
+          TZ=UTC /tmp/luchclock-simulation
