@@ -99,6 +99,7 @@ void encoderLoop() {
     }
     return;
   }
+  angle = calibratedAngle(angle);
   if (!initialized) {
     if (value != encoderCandidate) {
       encoderCandidate = value;
@@ -106,17 +107,17 @@ void encoderLoop() {
     }
     if (++encoderStableCount < settingsCurrent().encoderStableSamples) return;
     filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
-    tracker.beginObservation(calibratedAngle(angle));
+    tracker.beginObservation(angle);
     encoderPosition = raw;
     initialized = true;
     return;
   }
   if (filter.update(angle, elapsed)) {
-    if (!tracker.advance(calibratedAngle(filter.angle()), filter.lastDelta())) {
+    if (!tracker.advance(filter.angle(), filter.lastDelta())) {
       loseObservation();
       return;
     }
-    encoderPosition = filter.angle() / 512;
+    encoderPosition = (filter.angle() / 512 + 128U - calibrationOffset()) % 128U;
   }
   if (!filter.valid()) loseObservation();
 }
@@ -129,12 +130,16 @@ int encoderClockHour() { return encoderHourKnown() ? int(tracker.position() / 65
 uint32_t encoderClockPosition() { return encoderHourKnown() ? tracker.position() : 0; }
 bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(hour); }
 void encoderCalibrationChanged() {
-  if (encoderValid()) tracker.beginObservation(calibratedAngle(filter.angle()));
+  if (encoderValid()) {
+    const uint16_t angle = calibratedAngle(static_cast<uint16_t>(encoderPosition * 512U));
+    filter = position_math::MovementFilter(angle, DEFAULT_ENCODER_RATE, DEFAULT_ENCODER_BUDGET, DEFAULT_ENCODER_ANOMALY_MS, DEFAULT_ENCODER_REVERSE);
+    tracker.beginObservation(angle);
+  }
   else tracker.loseContinuity();
 }
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
-  return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;
+  return encoderValid()?filter.angle()/512:-1;
 }
 int encoderMinutes(){
   const int16_t position=encoderCalibratedPosition();
