@@ -4,11 +4,11 @@
 namespace position_math {
 class MovementFilter {
 public:
-    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0, uint8_t stableSamples = 2, uint16_t initialCredit = 0)
+    MovementFilter(uint16_t initial, uint32_t rate, uint16_t capacity, uint32_t timeoutMs = UINT32_MAX, uint16_t reverseTolerance = 0, uint8_t stableSamples = 2, uint16_t initialCredit = 0, uint16_t deadband = 0)
         : angle_(initial), lastDelta_(0), budget_(rate, capacity, initialCredit), timeoutMs_(timeoutMs),
           unconfirmedMs_(0), suspicious_(false), valid_(true), reverseActive_(false),
           pending_(false), candidate_(initial), stableSamples_(stableSamples < 2 ? 2 : stableSamples),
-          count_(0), reverseTolerance_(reverseTolerance) {}
+          count_(0), reverseTolerance_(reverseTolerance), deadband_(deadband) {}
     bool valid() const { return valid_; }
     bool healthy() const { return valid_ && !suspicious_ && !pending_ && !reverseActive_; }
     void invalidate() {
@@ -36,6 +36,11 @@ public:
         if (!beginSample(elapsedMs)) return false;
         int32_t delta;
         if (!angularDelta(angle_, sample, delta)) return reject();
+        // AS5600: bounded stationary jitter is not physical movement.
+        if (deadband_ && delta >= -int32_t(deadband_) && delta <= int32_t(deadband_)) {
+            if (!suspicious_) { pending_=false; reverseActive_=false; count_=0; unconfirmedMs_=0; return true; }
+            sample=angle_; delta=0;
+        }
         if (delta < 0) {
             pending_ = false;
             count_ = 0;
@@ -49,12 +54,15 @@ public:
         MovementBudget candidateBudget = budget_;
         if (!candidateBudget.consume(static_cast<uint16_t>(delta))) return reject();
         if (suspicious_ || delta > 0) {
-            if (!pending_ || candidate_ != sample) {
+            int32_t candidateDelta=0;
+            const bool consistent=pending_ && (candidate_==sample || (deadband_ && delta>0 && angularDelta(candidate_,sample,candidateDelta) && candidateDelta>=0 && candidateDelta<=int32_t(deadband_)));
+            if (!consistent) {
                 pending_ = true;
                 candidate_ = sample;
                 count_ = 1;
                 return false;
             }
+            candidate_=sample;
             if (++count_ < stableSamples_) return false;
         }
         budget_ = candidateBudget;
@@ -99,5 +107,6 @@ private:
     uint8_t stableSamples_;
     uint8_t count_;
     uint16_t reverseTolerance_;
+    uint16_t deadband_;
 };
 }
