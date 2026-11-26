@@ -27,3 +27,7 @@
 ### CI: интеграция и компиляция
 
 Добавлен host-тест реальных encoder_reader.cpp, motor_controller.cpp, controller.cpp с подменами Arduino GPIO/millis, Wire, аппаратных адаптеров, хранилища и журнала. Проверяет откалиброванный переход 11:59→12:00, запуск/стоп, AUTO без сохранённой калибровки, stale NTP, I²C loss, сброс аварии без запуска, ручной лимит/паузу и перекалибровку. Это не аппаратная проверка и не тест реальных HTTP/EEPROM/SNTP. Отдельный workflow компилирует NodeMCU ESP8266 с Arduino CLI 1.2.2 и core 3.1.2; выбран воспроизводимый baseline, соответствие локальной версии пользователя пока не подтверждено. Реальные credentials не используются. Результаты новых workflow ещё не проверены.
+
+### Подтверждённые результаты 84bda42
+
+[Host C++ tests](https://github.com/Akadza/LuchClock/actions/runs/45765664653): success, 15 модульных файлов и Reader/motor/controller integration OK. [ESP8266 firmware build](https://github.com/Akadza/LuchClock/actions/runs/45765664598): success, NodeMCU core 3.1.2. Повышена версия до 1.19, проверить новый CI перед прошивкой. [Протокол стенда](08-bench-protocol.md) — обязательные физические проверки; реальные HTTP, EEPROM и SNTP проверяются на устройстве.
