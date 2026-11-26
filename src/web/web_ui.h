@@ -331,6 +331,7 @@ body.modal-open{overflow:hidden}
   <div id="autoPanel"><strong id="autoStatus">Ожидание состояния</strong><span id="modeState">Автоматическое движение пока не реализовано</span><span id="motorStatus" hidden>Остановлен</span>
   <div id="autoProgress" hidden><div id="transitionTrack"><div id="autoBar" style="height:100%;width:100%;background:var(--blue);transition:width .1s linear"></div></div></div></div>
   <div id="manualPanel" hidden>
+    <div class="info" style="max-width:560px;margin:0 auto 12px"><div class="between" style="flex-wrap:wrap"><label for="clockHourSelect">Положение часовой стрелки</label><div style="display:flex;gap:8px"><select id="clockHourSelect" aria-label="Час на циферблате" style="background:var(--raised);color:var(--text);border:1px solid var(--line);padding:8px;border-radius:8px"><option value="0">12</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option></select><button id="setClockHourBtn" onclick="setClockHour()" disabled>Задать час</button></div></div><small id="clockHourState">Час не задан</small></div>
     <div class="controls">
       <button id="backwardBtn" hidden disabled>← Назад</button>
       <button id="stopBtn" class="stop" onclick="sendMotorCommand('stop')">■ Стоп</button>
@@ -441,6 +442,7 @@ function renderStatus(s) {
   if(clockValid){const now=performance.now();const predicted=(clockBase+now-clockAt)%86400000;const delta=((s.clock_ms-predicted+129600000)%86400000)-43200000;if(!clockAt || Math.abs(delta)>250){clockBase=s.clock_ms;clockAt=now;}tickClock();}else{clockAt=0;}
   text('calibrationBtn',s.calibration_current?'Откалибровано':'Откалибровать');
   text('firmwareVersion','v'+s.version);
+  text('clockHourState',s.clock_hour_known?'Час: '+(s.clock_hour===0?12:s.clock_hour)+' · координата: '+s.clock_position:'Час не задан — AUTO заблокирован');
   text('deviceName',s.device || 'LuchClock1');
   const calAllowed=s.calibration_allowed===true;
   $('calibrationBtn').disabled=!calAllowed || calibrationBusy || settingsBusy;
@@ -587,6 +589,7 @@ function updateManualButtons(state, remaining) {
   $('stopBtn').disabled = !statusKnown || commandPending || !s?.can_stop;
   $('autoBtn').disabled = !statusKnown || busy || !s?.can_auto || currentMode==='auto';
   $('manualBtn').disabled = !statusKnown || busy || !s?.can_manual;
+  $('setClockHourBtn').disabled = !statusKnown || busy || currentMode!=='manual' || !!s?.mode_transition || s?.motor_state!=='stopped' || !s?.encoder_healthy || !!s?.auto_fault;
   $('offBtn').disabled = !statusKnown || modeRequestPending || !s?.can_off;
   const reset=$('faultActions').querySelector('button');
   if(reset)reset.disabled=!statusKnown || !s?.can_reset_fault;
@@ -833,6 +836,18 @@ async function runCalibration(){
     loadLog();
   }catch(e){text('calibrationMessage',e.message)}
   finally{calibrationBusy=false;await refresh();}
+}
+async function setClockHour(){
+  if($('setClockHourBtn').disabled)return;
+  const hour=$('clockHourSelect').value;
+  if(!/^(?:[0-9]|10|11)$/.test(hour))return;
+  commandPending=true;
+  updateManualButtons(lastMotorState,lastMotorWait);
+  try{
+    await post('/api/clock-hour?hour='+hour);
+    await refresh();loadLog();
+  }catch(e){alert(e.message)}
+  finally{commandPending=false;await refresh();updateManualButtons(lastMotorState,lastMotorWait)}
 }
 async function resetFault(){
   try{await post('/api/reset-fault');await refresh();loadLog()}

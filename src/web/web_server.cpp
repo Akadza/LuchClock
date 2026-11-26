@@ -93,6 +93,10 @@ void handleStatus() {
   json += snapshot.encoderConnected ? "true" : "false";
   json += F(",\"encoder_valid\":");
   json += snapshot.encoderValid ? "true" : "false";
+  json += F(",\"encoder_healthy\":");json += snapshot.encoderHealthy?"true":"false";
+  json += F(",\"clock_hour_known\":");json += snapshot.clockHourKnown?"true":"false";
+  json += F(",\"clock_hour\":");json += String(snapshot.clockHour);
+  json += F(",\"clock_position\":");json += String((unsigned long)snapshot.clockPosition);
   json += F(",\"encoder_address\":");
   json += String(snapshot.encoderAddress);
   json += F(",\"encoder_raw\":");
@@ -270,6 +274,15 @@ void handleSettingsPost(){
 }
 void handleCalibration(){sendResult(controller().calibrate());}
 void handleFaultReset(){sendResult(controller().resetFault());}
+void handleSetClockHour(){
+  if(!server.hasArg("hour")){sendResult({ResultCode::Invalid,"Missing hour"});return;}
+  const String hour=server.arg("hour");
+  if(hour.length()==0 || hour.length()>2){sendResult({ResultCode::Invalid,"Invalid hour"});return;}
+  for(unsigned int i=0;i<hour.length();++i)if(hour[i]<'0'||hour[i]>'9'){sendResult({ResultCode::Invalid,"Invalid hour"});return;}
+  const int n=hour.toInt();
+  if(n>11){sendResult({ResultCode::Invalid,"Hour out of range"});return;}
+  sendResult(controller().setClockHour(static_cast<uint8_t>(n)));
+}
 void webSetup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatus);
@@ -280,6 +293,7 @@ void webSetup() {
   server.on("/api/settings", HTTP_POST, handleSettingsPost);
   server.on("/api/reset-fault", HTTP_POST, handleFaultReset);
   server.on("/api/calibration", HTTP_POST, handleCalibration);
+  server.on("/api/clock-hour", HTTP_POST, handleSetClockHour);
 
   server.onNotFound([]() {
     server.send(

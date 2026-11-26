@@ -7,6 +7,11 @@ public:
  virtual bool encoderConnected()=0;
  virtual bool encoderValid()=0;
  virtual bool encoderHealthy()=0;
+ virtual bool encoderHourKnown()=0;
+ virtual int encoderClockHour()=0;
+ virtual uint32_t encoderClockPosition()=0;
+ virtual bool encoderSetHour(uint8_t hour)=0;
+ virtual void encoderCalibrationChanged()=0;
  virtual int16_t encoderRawPosition()=0;
  virtual int16_t encoderCalibratedPosition()=0;
  virtual int encoderMinutes()=0;

@@ -121,6 +121,11 @@ void encoderLoop() {
 bool encoderConnected() { return encoderAddress != 0; }
 bool encoderValid() { return encoderAddress && encoderPosition >= 0; }
 bool encoderHealthy() { return encoderValid() && filter.healthy(); }
+bool encoderHourKnown() { return encoderHealthy() && tracker.known(); }
+int encoderClockHour() { return encoderHourKnown() ? int(tracker.position() / 65536UL) : -1; }
+uint32_t encoderClockPosition() { return encoderHourKnown() ? tracker.position() : 0; }
+bool encoderSetHour(uint8_t hour) { return encoderHealthy() && tracker.setHour(hour); }
+void encoderCalibrationChanged() { tracker.loseContinuity(); }
 int16_t encoderRawPosition(){return encoderValid()?encoderPosition:-1;}
 int16_t encoderCalibratedPosition(){
   return encoderValid()?(encoderPosition+calibrationOffset())%128:-1;
