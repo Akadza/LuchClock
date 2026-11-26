@@ -25,5 +25,15 @@ int main() {
     CHECK(unanchored.advance(0, 16) && !unanchored.known());
     unanchored.beginObservation(4096); // New physical baseline does not restore the old hour.
     CHECK(!unanchored.known() && unanchored.angle() == 4096);
+    // Raw 125 + offset 2 = calibrated 127; next raw 126 crosses the dial hour.
+    position_math::ClockTracker calibrated(position_math::applyOffset(64000, 1024));
+    CHECK(calibrated.setHour(11) && calibrated.position() == 785920u);
+    CHECK(calibrated.advance(position_math::applyOffset(64512, 1024), 512));
+    CHECK(calibrated.position() == 0 && calibrated.known());
+    // Recalibration is not movement and requires a new operator anchor.
+    calibrated.beginObservation(position_math::applyOffset(64512, 2048));
+    CHECK(!calibrated.known() && calibrated.angle() == 1024);
+    CHECK(calibrated.advance(1536, 512) && !calibrated.known());
+    CHECK(calibrated.setHour(3) && calibrated.position() == 198144u);
     std::cout << "Clock tracker OK\n";
 }
